@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DockforLife v0.004 | Enhanced</title>
+    <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5.0.2/dist/obs-ws.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0a; 
+            --card: #161616; 
+            --border: #2a2a2a;
+            --border-hover: #444;
+            --text: #ffffff; 
+            --text-muted: #888;
+            --accent: #3b82f6; 
+            --danger: #ef4444; 
+            --success: #22c55e;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* HEADER */
+        header {
+            width: 100%;
+            max-width: 900px;
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+            position: sticky;
+            top: 0;
+            background: var(--bg);
+            z-index: 100;
+        }
+
+        .brand {
+            font-weight: 900;
+            font-size: 1.1rem;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand span {
+            color: var(--accent);
+        }
+
+        .version {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: 500;
+            background: var(--card);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        .status-pill {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: var(--card);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            animation: pulse 2s infinite;
+        }
+
+        .online .status-dot {
+            background: var(--success);
+            animation: none;
+        }
+
+        .online {
+            color: var(--success);
+            border-color: rgba(34, 197, 94, 0.3);
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .error {
+            color: var(--danger);
+            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .error .status-dot {
+            background: var(--danger);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* GRID */
+        .grid {
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 12px;
+            width: 100%;
+            max-width: 900px;
+            padding: 0 16px;
+        }
+
+        @media (min-width: 500px) {
+            .grid {
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                gap: 16px;
+                padding: 0 20px;
+            }
+        }
+
+        .deck-btn {
+            aspect-ratio: 1/1; 
+            background: var(--card);
+            border: 2px solid var(--border); 
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            user-select: none;
+            transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            overflow: hidden;
+        }
+
+        .deck-btn:hover {
+            border-color: var(--border-hover);
+        }
+
+        .deck-btn:active {
+            transform: scale(0.94);
+        }
+        
+        /* Active States with High Contrast */
+        .btn-rec-active {
+            background-color: var(--danger) !important;
+            border-color: var(--danger) !important;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-stream-active {
+            background-color: var(--success) !important;
+            border-color: var(--success) !important;
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+        }
+
+        .btn-muted {
+            opacity: 0.5;
+        }
+        
+        .btn-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            line-height: 1;
+        }
+
+        .btn-label {
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            text-align: center;
+            width: 90%;
+            line-height: 1.2;
+            letter-spacing: 0.3px;
+        }
+
+        .btn-status {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .add-btn {
+            border-style: dashed;
+            opacity: 0.4;
+            transition: opacity 0.2s, border-color 0.2s, color 0.2s;
+        }
+
+        .add-btn:hover {
+            opacity: 1;
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .add-icon {
+            font-size: 2rem;
+            font-weight: 300;
+        }
+
+        /* Edit hint */
+        .edit-hint {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            font-size: 9px;
+            color: var(--text-muted);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .deck-btn:hover .edit-hint {
+            opacity: 0.6;
+        }
+
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: #111;
+            padding: 24px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 380px;
+            border: 1px solid var(--border);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 1rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .close-btn:hover {
+            color: var(--text);
+        }
+        
+        label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin: 16px 0 6px 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px 14px;
+            background: #0a0a0a;
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+        
+        .color-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .color-dot {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.15s, border-color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .color-dot:hover {
+            transform: scale(1.1);
+        }
+
+        .color-dot.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+
+        .color-picker-wrapper {
+            position: relative;
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+        }
+
+        .color-picker-wrapper input[type="color"] {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            background: none;
+        }
+
+        .color-picker-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 2px;
+        }
+
+        .color-picker-wrapper input[type="color"]::-webkit-color-swatch {
+            border-radius: 4px;
+            border: none;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 24px;
+        }
+        
+        .primary-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-weight: 800;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.15s;
+        }
+
+        .primary-btn:hover {
+            background: #2563eb;
+        }
+
+        .primary-btn:active {
+            transform: scale(0.98);
+        }
+
+        .secondary-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .secondary-btn:hover {
+            background: #1a1a1a;
+            border-color: var(--border-hover);
+        }
+
+        .danger-btn {
+            color: var(--danger);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .danger-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--danger);
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--card);
+            color: var(--text);
+            padding: 12px 20px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 1000;
+            opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .toast.success {
+            border-color: rgba(34, 197, 94, 0.3);
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state p {
+            margin: 8px 0 0;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand">
+        DOCK<span>FORLIFE</span>
+        <span class="version">v0.004</span>
+    </div>
+    <div id="status" class="status-pill">
+        <span class="status-dot"></span>
+        <span id="status-text">CONNECTING</span>
+    </div>
+</header>
+
+<div class="grid" id="main-grid"></div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal" id="config-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">BUTTON SETUP</h3>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        
+        <label>Label</label>
+        <input type="text" id="cfg-label" placeholder="Enter button name" maxlength="20">
+        
+        <label>Action</label>
+        <select id="cfg-type" onchange="updateUI()">
+            <option value="Mute">🎤 Mute Audio</option>
+            <option value="Visibility">👁️ Toggle Visibility</option>
+            <option value="Filter">🎥 Toggle Filter</option>
+            <option value="Scene">🎬 Switch Scene</option>
+            <option value="Record">🔴 Record</option>
+            <option value="Stream">🌐 Stream</option>
+        </select>
+
+        <div id="target-box">
+            <label>Target</label>
+            <select id="cfg-target" onchange="loadFilters()"></select>
+        </div>
+
+        <div id="filter-box" style="display:none">
+            <label>Filter</label>
+            <select id="cfg-filter"></select>
+        </div>
+
+        <label>Color</label>
+        <div class="color-row" id="color-row">
+            <div class="color-dot" style="background:#161616" data-color="#161616" onclick="setColor('#161616', this)"></div>
+            <div class="color-dot" style="background:#22c55e" data-color="#22c55e" onclick="setColor('#22c55e', this)"></div>
+            <div class="color-dot" style="background:#ef4444" data-color="#ef4444" onclick="setColor('#ef4444', this)"></div>
+            <div class="color-dot" style="background:#3b82f6" data-color="#3b82f6" onclick="setColor('#3b82f6', this)"></div>
+            <div class="color-dot" style="background:#f59e0b" data-color="#f59e0b" onclick="setColor('#f59e0b', this)"></div>
+            <div class="color-dot" style="background:#8b5cf6" data-color="#8b5cf6" onclick="setColor('#8b5cf6', this)"></div>
+            <div class="color-picker-wrapper">
+                <input type="color" id="cfg-color" value="#161616" onchange="setColor(this.value, null)">
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button class="primary-btn" onclick="saveBtn()">SAVE BUTTON</button>
+            <button class="secondary-btn danger-btn" id="delete-btn" onclick="deleteBtn()">DELETE</button>
+            <button class="secondary-btn" onclick="closeModal()">CANCEL</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    /**
+     * DOCKFORLIFE v0.004 - Enhanced Edition
+     * Fixes: Contrast, API calls, UX improvements, mobile support
+     */
+    const obs = new OBSWebSocket();
+    let deck = JSON.parse(localStorage.getItem('dfl_v004')) || [];
+    let currentIdx = null;
+    let longPressTimer = null;
+    
+    // Cache
+    let obsData = { scenes: [], inputs: [], allSources: [], rec: false, str: false, mutedInputs: {} };
+
+    // Default buttons if empty
+    if (deck.length === 0) {
+        deck = [
+            { label: "MIC", type: "Mute", target: "Mic/Aux", color: "#161616" },
+            { label: "DESKTOP", type: "Mute", target: "Desktop Audio", color: "#161616" },
+            { label: "REC", type: "Record", target: null, color: "#161616" },
+            { label: "STREAM", type: "Stream", target: null, color: "#161616" }
+        ];
+        saveDeck();
+    }
+
+    // --- CONTRAST HELPER (WCAG compliant) ---
+    function getContrastColor(hex) {
+        if (!hex || hex.length < 7) return "#ffffff";
+        try {
+            const r = parseInt(hex.substr(1, 2), 16);
+            const g = parseInt(hex.substr(3, 2), 16);
+            const b = parseInt(hex.substr(5, 2), 16);
+            // Using relative luminance formula
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#000000' : '#ffffff';
+        } catch (e) {
+            return "#ffffff";
+        }
+    }
+
+    function saveDeck() {
+        localStorage.setItem('dfl_v004', JSON.stringify(deck));
+    }
+
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        toast.className = 'toast ' + type;
+        toast.innerHTML = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    function setStatus(status, text) {
+        const pill = document.getElementById('status');
+        const statusText = document.getElementById('status-text');
+        pill.className = 'status-pill ' + status;
+        statusText.textContent = text;
+    }
+
+    async function init() {
+        try {
+            await obs.connect('ws://127.0.0.1:4455', undefined, { rpcVersion: 1 });
+            setStatus('online', 'ONLINE');
+            
+            // Map special inputs to actual names
+            const special = await obs.call('GetSpecialInputs');
+            deck.forEach(b => {
+                if (b.target === "Desktop Audio" && special.desktop1) b.target = special.desktop1;
+                if (b.target === "Mic/Aux" && special.mic1) b.target = special.mic1;
+            });
+            saveDeck();
+
+            // Scan all sources
+            const sList = await obs.call('GetSceneList');
+            const iList = await obs.call('GetInputList');
+            obsData.scenes = sList.scenes;
+            obsData.inputs = iList.inputs;
+
+            let sourceSet = new Set();
+            iList.inputs.forEach(i => sourceSet.add(i.inputName));
+            
+            for (let s of sList.scenes) {
+                try {
+                    const { sceneItems } = await obs.call('GetSceneItemList', { sceneName: s.sceneName });
+                    sceneItems.forEach(si => sourceSet.add(si.sourceName));
+                } catch (e) { /* ignore */ }
+            }
+            obsData.allSources = Array.from(sourceSet).sort();
+
+            // Get initial mute states
+            for (let input of iList.inputs) {
+                try {
+                    const { inputMuted } = await obs.call('GetInputMute', { inputName: input.inputName });
+                    obsData.mutedInputs[input.inputName] = inputMuted;
+                } catch (e) { /* ignore */ }
+            }
+
+            syncStates();
+        } catch (e) {
+            setStatus('error', 'OFFLINE');
+            setTimeout(init, 3000);
+        }
+    }
+
+    async function syncStates() {
+        try {
+            const r = await obs.call('GetRecordStatus');
+            const s = await obs.call('GetStreamStatus');
+            obsData.rec = r.outputActive;
+            obsData.str = s.outputActive;
+
+            // Update mute states
+            for (let input of obsData.inputs) {
+                try {
+                    const { inputMuted } = await obs.call('GetInputMute', { inputName: input.inputName });
+                    obsData.mutedInputs[input.inputName] = inputMuted;
+                } catch (e) { /* ignore */ }
+            }
+
+            render();
+        } catch (e) { /* ignore */ }
+        setTimeout(syncStates, 1500);
+    }
+
+    function render() {
+        const grid = document.getElementById('main-grid');
+        grid.innerHTML = "";
+        
+        deck.forEach((btn, i) => {
+            const el = document.createElement('div');
+            el.className = "deck-btn";
+            
+            const isRecActive = btn.type === "Record" && obsData.rec;
+            const isStreamActive = btn.type === "Stream" && obsData.str;
+            const isMuted = btn.type === "Mute" && obsData.mutedInputs[btn.target];
+            
+            if (isRecActive) {
+                el.classList.add('btn-rec-active');
+            } else if (isStreamActive) {
+                el.classList.add('btn-stream-active');
+            } else {
+                el.style.backgroundColor = btn.color;
+            }
+
+            if (isMuted) {
+                el.classList.add('btn-muted');
+            }
+
+            // Text contrast
+            const bgColor = isRecActive ? '#ef4444' : isStreamActive ? '#22c55e' : btn.color;
+            const textColor = getContrastColor(bgColor);
+            el.style.color = textColor;
+            
+            if (!isRecActive && !isStreamActive) {
+                el.style.borderColor = btn.color === '#161616' ? 'var(--border)' : btn.color;
+            }
+
+            el.innerHTML = `
+                <div class="btn-icon">${getIcon(btn.type)}</div>
+                <div class="btn-label">${btn.label}</div>
+                <span class="edit-hint">⚙️</span>
+            `;
+            
+            // Click to execute
+            el.onclick = (e) => {
+                if (!longPressTimer) execute(btn);
+            };
+
+            // Long press for mobile / right click for desktop
+            el.oncontextmenu = (e) => {
+                e.preventDefault();
+                openModal(i);
+            };
+
+            el.ontouchstart = (e) => {
+                longPressTimer = setTimeout(() => {
+                    openModal(i);
+                    longPressTimer = null;
+                }, 600);
+            };
+
+            el.ontouchend = () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            };
+
+            el.ontouchmove = () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            };
+
+            grid.appendChild(el);
+        });
+
+        // Add button
+        const add = document.createElement('div');
+        add.className = "deck-btn add-btn";
+        add.innerHTML = `<div class="add-icon">+</div><div class="btn-label">ADD</div>`;
+        add.onclick = () => openModal(deck.length);
+        grid.appendChild(add);
+    }
+
+    async function toggleVisibilitySmart(targetName) {
+        try {
+            const { currentProgramSceneName } = await obs.call('GetCurrentProgramScene');
+            const itemId = await findItemId(currentProgramSceneName, targetName);
+            
+            if (itemId !== -1) {
+                const { sceneItemEnabled } = await obs.call('GetSceneItemEnabled', { 
+                    sceneName: currentProgramSceneName, 
+                    sceneItemId: itemId 
+                });
+                await obs.call('SetSceneItemEnabled', { 
+                    sceneName: currentProgramSceneName, 
+                    sceneItemId: itemId, 
+                    sceneItemEnabled: !sceneItemEnabled 
+                });
+            } else {
+                showToast(`"${targetName}" not found in current scene`, 'error');
+            }
+        } catch (e) {
+            showToast('Failed to toggle visibility', 'error');
+        }
+    }
+
+    async function findItemId(sceneName, sourceName) {
+        try {
+            const { sceneItems } = await obs.call('GetSceneItemList', { sceneName });
+            const item = sceneItems.find(i => i.sourceName === sourceName);
+            return item ? item.sceneItemId : -1;
+        } catch (e) {
+            return -1;
+        }
+    }
+
+    async function execute(btn) {
+        try {
+            if (btn.type === "Record") {
+                await obs.call('ToggleRecord');
+            } else if (btn.type === "Stream") {
+                await obs.call('ToggleStream');
+            } else if (btn.type === "Scene") {
+                await obs.call('SetCurrentProgramScene', { sceneName: btn.target });
+            } else if (btn.type === "Mute") {
+                await obs.call('ToggleInputMute', { inputName: btn.target });
+            } else if (btn.type === "Filter") {
+                // Fixed: Use GetSourceFilter instead of GetSourceFilterStatus
+                const response = await obs.call('GetSourceFilter', { 
+                    sourceName: btn.target, 
+                    filterName: btn.filter 
+                });
+                await obs.call('SetSourceFilterEnabled', { 
+                    sourceName: btn.target, 
+                    filterName: btn.filter, 
+                    filterEnabled: !response.filterEnabled 
+                });
+            } else if (btn.type === "Visibility") {
+                await toggleVisibilitySmart(btn.target);
+            }
+        } catch (e) {
+            console.error('Execute error:', e);
+            showToast('Action failed: ' + (e.message || 'Unknown error'), 'error');
+        }
+    }
+
+    function updateUI() {
+        const type = document.getElementById('cfg-type').value;
+        const target = document.getElementById('cfg-target');
+        const currentTarget = deck[currentIdx]?.target;
+        
+        document.getElementById('filter-box').style.display = (type === "Filter") ? "block" : "none";
+        document.getElementById('target-box').style.display = (["Record", "Stream"].includes(type)) ? "none" : "block";
+
+        target.innerHTML = "";
+        let list = [];
+        
+        if (type === "Scene") {
+            list = obsData.scenes.map(s => s.sceneName);
+        } else if (type === "Mute") {
+            list = obsData.inputs.map(i => i.inputName);
+        } else {
+            list = obsData.allSources;
+        }
+        
+        list.forEach(item => {
+            const opt = new Option(item, item);
+            if (item === currentTarget) opt.selected = true;
+            target.add(opt);
+        });
+
+        loadFilters();
+    }
+
+    async function loadFilters() {
+        if (document.getElementById('cfg-type').value !== "Filter") return;
+        
+        const sourceName = document.getElementById('cfg-target').value;
+        const sel = document.getElementById('cfg-filter');
+        const currentFilter = deck[currentIdx]?.filter;
+        
+        try {
+            const { filters } = await obs.call('GetSourceFilterList', { sourceName });
+            sel.innerHTML = "";
+            
+            if (filters.length === 0) {
+                sel.add(new Option('No filters available', ''));
+                return;
+            }
+            
+            filters.forEach(f => {
+                const opt = new Option(f.filterName, f.filterName);
+                if (f.filterName === currentFilter) opt.selected = true;
+                sel.add(opt);
+            });
+        } catch (e) {
+            sel.innerHTML = "";
+            sel.add(new Option('Failed to load filters', ''));
+        }
+    }
+
+    function setColor(color, element) {
+        document.getElementById('cfg-color').value = color;
+        
+        // Update selection visual
+        document.querySelectorAll('.color-dot').forEach(dot => {
+            dot.classList.remove('selected');
+        });
+        
+        if (element) {
+            element.classList.add('selected');
+        }
+    }
+
+    function updateColorSelection(color) {
+        document.querySelectorAll('.color-dot').forEach(dot => {
+            if (dot.dataset.color === color) {
+                dot.classList.add('selected');
+            } else {
+                dot.classList.remove('selected');
+            }
+        });
+    }
+
+    function openModal(i) {
+        currentIdx = i;
+        const btn = deck[i] || { label: "", type: "Mute", color: "#161616" };
+        
+        document.getElementById('cfg-label').value = btn.label;
+        document.getElementById('cfg-type').value = btn.type;
+        document.getElementById('cfg-color').value = btn.color;
+        document.getElementById('delete-btn').style.display = i < deck.length ? 'block' : 'none';
+        
+        updateColorSelection(btn.color);
+        document.getElementById('config-modal').style.display = "flex";
+        
+        // Small delay to ensure OBS data is loaded
+        setTimeout(updateUI, 50);
+    }
+    
+    function saveBtn() {
+        const label = document.getElementById('cfg-label').value.trim();
+        const type = document.getElementById('cfg-type').value;
+        const target = document.getElementById('cfg-target').value;
+        const filter = document.getElementById('cfg-filter').value;
+        const color = document.getElementById('cfg-color').value;
+
+        if (!label) {
+            showToast('Please enter a label', 'error');
+            return;
+        }
+
+        if (!["Record", "Stream"].includes(type) && !target) {
+            showToast('Please select a target', 'error');
+            return;
+        }
+
+        deck[currentIdx] = { label, type, target, filter, color };
+        saveDeck();
+        render();
+        closeModal();
+        showToast('Button saved!', 'success');
+    }
+    
+    function deleteBtn() {
+        if (currentIdx >= deck.length) return;
+        
+        if (confirm('Delete this button?')) {
+            deck.splice(currentIdx, 1);
+            saveDeck();
+            render();
+            closeModal();
+            showToast('Button deleted', 'success');
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('config-modal').style.display = "none";
+        currentIdx = null;
+    }
+
+    function getIcon(t) {
+        const icons = {
+            Record: "🔴",
+            Stream: "🌐",
+            Mute: "🎤",
+            Scene: "🎬",
+            Visibility: "👁️",
+            Filter: "🎥"
+        };
+        return icons[t] || "⚡";
+    }
+
+    // Close modal on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+
+    // Close modal on backdrop click
+    document.getElementById('config-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'config-modal') closeModal();
+    });
+
+    window.onload = () => {
+        render();
+        init();
+    };
+</script>
+</body>
+</html>
