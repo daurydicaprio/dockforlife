@@ -17,12 +17,13 @@ import (
 )
 
 type Config struct {
-	OBSURL      string
-	OBSPassword string
-	WorkerURL   string
-	JoinCode    string
-	ListenAddr  string
-	LogLevel    string
+	OBSURL         string
+	OBSPassword    string
+	WorkerURL      string
+	JoinCode       string
+	ListenAddr     string
+	AutoReconnect  bool
+	ReconnectDelay time.Duration
 }
 
 type Agent struct {
@@ -33,52 +34,125 @@ type Agent struct {
 	cancel     context.CancelFunc
 	mu         sync.Mutex
 	connected  bool
+	stopChan   chan struct{}
 }
 
-func NewAgent(cfg Config) (*Agent, error) {
+func NewAgent(cfg Config) *Agent {
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = "127.0.0.1:4456"
 	}
 	if cfg.OBSURL == "" {
 		cfg.OBSURL = "ws://127.0.0.1:4455"
 	}
+	if cfg.ReconnectDelay == 0 {
+		cfg.ReconnectDelay = 5 * time.Second
+	}
+	cfg.AutoReconnect = true
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Agent{
-		cfg:    cfg,
-		ctx:    ctx,
-		cancel: cancel,
-	}, nil
+		cfg:      cfg,
+		ctx:      ctx,
+		cancel:   cancel,
+		stopChan: make(chan struct{}),
+	}
 }
 
 func (a *Agent) Start() error {
-	log.Printf("[Agent] Starting...")
+	log.Printf("[Agent] Starting DockForLife Proxy Agent v1.0")
 	log.Printf("[Agent] OBS URL: %s", a.cfg.OBSURL)
+	log.Printf("[Agent] Auto-reconnect: %v", a.cfg.AutoReconnect)
 
-	var err error
-	a.obsConn, _, err = websocket.DefaultDialer.Dial(a.cfg.OBSURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to connect to OBS: %w", err)
-	}
-
-	a.connected = true
-	log.Printf("[Agent] Connected to OBS")
-
-	go a.handleOBSMessages()
-
-	if a.cfg.WorkerURL != "" && a.cfg.JoinCode != "" {
-		if err := a.connectToWorker(); err != nil {
-			log.Printf("[Agent] Worker connection failed: %v (continuing without remote)", err)
-		}
-	}
-
+	go a.connectOBSWithRetry()
 	go a.handleShutdown()
 
 	return nil
 }
 
-func (a *Agent) connectToWorker() error {
+func (a *Agent) connectOBSWithRetry() {
+	for {
+		select {
+		case <-a.stopChan:
+			return
+		case <-a.ctx.Done():
+			return
+		default:
+			if err := a.connectOBS(); err != nil {
+				log.Printf("[Agent] OBS connection failed: %v", err)
+				if a.cfg.AutoReconnect {
+					log.Printf("[Agent] Retrying in %v...", a.cfg.ReconnectDelay)
+					select {
+					case <-a.stopChan:
+						return
+					case <-a.ctx.Done():
+						return
+					case <-time.After(a.cfg.ReconnectDelay):
+						continue
+					}
+				}
+			}
+			return
+		}
+	}
+}
+
+func (a *Agent) connectOBS() error {
+	a.mu.Lock()
+	if a.connected {
+		a.mu.Unlock()
+		return nil
+	}
+	a.mu.Unlock()
+
+	log.Printf("[Agent] Connecting to OBS: %s", a.cfg.OBSURL)
+
+	obs, _, err := websocket.DefaultDialer.Dial(a.cfg.OBSURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to OBS: %w", err)
+	}
+
+	a.mu.Lock()
+	a.obsConn = obs
+	a.connected = true
+	a.mu.Unlock()
+
+	log.Printf("[Agent] Connected to OBS")
+
+	go a.handleOBSMessages()
+
+	if a.cfg.WorkerURL != "" && a.cfg.JoinCode != "" {
+		go a.connectWorkerWithRetry()
+	}
+
+	return nil
+}
+
+func (a *Agent) connectWorkerWithRetry() {
+	for {
+		select {
+		case <-a.stopChan:
+			return
+		case <-a.ctx.Done():
+			return
+		default:
+			if err := a.connectWorker(); err != nil {
+				log.Printf("[Agent] Worker connection failed: %v", err)
+				select {
+				case <-a.stopChan:
+					return
+				case <-a.ctx.Done():
+					return
+				case <-time.After(a.cfg.ReconnectDelay):
+					continue
+				}
+			}
+			return
+		}
+	}
+}
+
+func (a *Agent) connectWorker() error {
 	workerURL := a.cfg.WorkerURL
 
 	if workerURL == "" {
@@ -94,10 +168,13 @@ func (a *Agent) connectToWorker() error {
 
 	conn, _, err := websocket.DefaultDialer.Dial(fullURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to worker: %w (URL: %s)", err, fullURL)
+		return fmt.Errorf("failed to connect to worker: %w", err)
 	}
 
+	a.mu.Lock()
 	a.workerConn = conn
+	a.mu.Unlock()
+
 	log.Printf("[Agent] Connected to Cloudflare Worker")
 
 	registerMsg := map[string]interface{}{
@@ -116,10 +193,11 @@ func (a *Agent) connectToWorker() error {
 }
 
 func (a *Agent) Stop() {
+	close(a.stopChan)
+	a.cancel()
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
-	a.cancel()
 
 	if a.obsConn != nil {
 		a.obsConn.Close()
@@ -135,12 +213,28 @@ func (a *Agent) Stop() {
 func (a *Agent) handleOBSMessages() {
 	for {
 		select {
+		case <-a.stopChan:
+			return
 		case <-a.ctx.Done():
 			return
 		default:
-			_, message, err := a.obsConn.ReadMessage()
+			a.mu.Lock()
+			obs := a.obsConn
+			a.mu.Unlock()
+
+			if obs == nil {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+
+			_, message, err := obs.ReadMessage()
 			if err != nil {
 				log.Printf("[Agent] OBS read error: %v", err)
+				a.mu.Lock()
+				a.obsConn = nil
+				a.connected = false
+				a.mu.Unlock()
+				go a.connectOBSWithRetry()
 				return
 			}
 
@@ -149,18 +243,18 @@ func (a *Agent) handleOBSMessages() {
 				continue
 			}
 
-			log.Printf("[Agent] OBS Event received")
+			a.mu.Lock()
+			worker := a.workerConn
+			a.mu.Unlock()
 
-			if a.workerConn != nil {
+			if worker != nil {
 				workerMsg := map[string]interface{}{
 					"type":      "obs_event",
 					"joinCode":  a.cfg.JoinCode,
 					"eventData": obsEvent,
 				}
-				if err := a.workerConn.WriteJSON(workerMsg); err != nil {
-					log.Printf("[Agent] Failed to send OBS event to worker: %v", err)
-				} else {
-					log.Printf("[Agent] Sent OBS event to worker")
+				if err := worker.WriteJSON(workerMsg); err != nil {
+					log.Printf("[Agent] Failed to send OBS event: %v", err)
 				}
 			}
 		}
@@ -173,30 +267,39 @@ func (a *Agent) handleWorkerMessages() {
 
 	for {
 		select {
+		case <-a.stopChan:
+			return
 		case <-a.ctx.Done():
 			return
 		case <-pingTicker.C:
-			if a.workerConn != nil {
-				log.Printf("[Agent] Sending pong")
-				a.workerConn.WriteMessage(websocket.TextMessage, []byte("pong"))
+			a.mu.Lock()
+			worker := a.workerConn
+			a.mu.Unlock()
+			if worker != nil {
+				worker.WriteMessage(websocket.TextMessage, []byte("pong"))
 			}
 		default:
-			if a.workerConn == nil {
+			a.mu.Lock()
+			worker := a.workerConn
+			a.mu.Unlock()
+
+			if worker == nil {
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
-			_, message, err := a.workerConn.ReadMessage()
+			_, message, err := worker.ReadMessage()
 			if err != nil {
 				log.Printf("[Agent] Worker read error: %v", err)
+				a.mu.Lock()
+				a.workerConn = nil
+				a.mu.Unlock()
+				go a.connectWorkerWithRetry()
 				return
 			}
 
 			messageStr := string(message)
-			log.Printf("[Agent] Worker Message: %s", messageStr)
-
 			if messageStr == "pong" {
-				log.Printf("[Agent] Received pong from worker")
 				continue
 			}
 
@@ -205,31 +308,24 @@ func (a *Agent) handleWorkerMessages() {
 				continue
 			}
 
-			msgType, ok := workerMsg["type"].(string)
-			if !ok {
-				continue
-			}
+			msgType, _ := workerMsg["type"].(string)
 
 			switch msgType {
 			case "ping":
-				log.Printf("[Agent] Received ping, sending pong")
-				a.workerConn.WriteMessage(websocket.TextMessage, []byte("pong"))
+				worker.WriteMessage(websocket.TextMessage, []byte("pong"))
 
 			case "command":
 				method, _ := workerMsg["method"].(string)
 				params, _ := workerMsg["params"].(map[string]interface{})
 				if method != "" {
-					log.Printf("[Agent] Executing command: %s", method)
-					if err := a.SendCommand(method, params); err != nil {
-						log.Printf("[Agent] Command failed: %v", err)
-					}
+					a.SendCommand(method, params)
 				}
+
+			case "host_disconnected":
+				log.Printf("[Agent] Host disconnected (should not happen)")
 
 			case "client_joined":
 				log.Printf("[Agent] Client joined the session")
-
-			case "host_disconnected":
-				log.Printf("[Agent] Host disconnected (should not happen for host)")
 			}
 		}
 	}
@@ -250,7 +346,7 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if !a.connected {
+	if a.obsConn == nil {
 		return fmt.Errorf("not connected to OBS")
 	}
 
@@ -278,15 +374,18 @@ func main() {
 	workerURL := flag.String("worker", "", "Cloudflare Worker URL for remote access")
 	joinCode := flag.String("join", "", "Join code for tunnel identification")
 	listenAddr := flag.String("listen", "127.0.0.1:4456", "Local listening address")
+	noAutoReconnect := flag.Bool("no-auto-reconnect", false, "Disable auto-reconnect")
 
 	flag.Parse()
 
 	cfg := Config{
-		OBSURL:      *obsURL,
-		OBSPassword: *obsPassword,
-		WorkerURL:   *workerURL,
-		JoinCode:    *joinCode,
-		ListenAddr:  *listenAddr,
+		OBSURL:         *obsURL,
+		OBSPassword:    *obsPassword,
+		WorkerURL:      *workerURL,
+		JoinCode:       *joinCode,
+		ListenAddr:     *listenAddr,
+		AutoReconnect:  !*noAutoReconnect,
+		ReconnectDelay: 5 * time.Second,
 	}
 
 	fmt.Printf("DockForLife Proxy Agent v1.0.0\n")
@@ -294,20 +393,16 @@ func main() {
 	fmt.Printf("OBS URL: %s\n", cfg.OBSURL)
 	fmt.Printf("Worker: %s\n", cfg.WorkerURL)
 	fmt.Printf("Join Code: %s\n", cfg.JoinCode)
+	fmt.Printf("Auto-reconnect: %v\n", cfg.AutoReconnect)
 	fmt.Printf("\n")
 
-	proxyAgent, err := NewAgent(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := proxyAgent.Start(); err != nil {
+	agent := NewAgent(cfg)
+	if err := agent.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start agent: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Agent started. Press Ctrl+C to stop.")
 
-	<-proxyAgent.ctx.Done()
+	<-agent.ctx.Done()
 }
