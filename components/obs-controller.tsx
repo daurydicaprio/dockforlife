@@ -20,6 +20,17 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import {
+  CONTRACT_VERSION,
+  CommandType,
+  Command,
+} from "@/lib/obs-contract"
+import {
+  validateCommand,
+  createCommand,
+  commandToString,
+} from "@/lib/obs-validator"
+import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
+import {
   Mic,
   Eye,
   Video,
@@ -153,6 +164,7 @@ export function OBSController() {
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [adapter, setAdapter] = useState<OBSWebSocketAdapter | null>(null)
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("dfl_theme")
@@ -247,6 +259,10 @@ export function OBSController() {
 
       console.log(`[OBS] Scenes loaded: ${sceneList.scenes.length}`)
       console.log(`[OBS] Inputs loaded: ${inputList.inputs.length}`)
+      console.log(`[PHASE2] Contract version: ${CONTRACT_VERSION}`)
+
+      const obsAdapter = new OBSWebSocketAdapter(obs)
+      setAdapter(obsAdapter)
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
@@ -391,6 +407,52 @@ export function OBSController() {
       }
     },
     [connected, showToast],
+  )
+
+  const executeContract = useCallback(
+    async (btn: DeckButton): Promise<boolean> => {
+      if (!obsRef.current || !connected) {
+        showToast("No conectado a OBS", "error")
+        return false
+      }
+
+      const commandType: CommandType = btn.type.toLowerCase() as CommandType
+      const partialCommand = {
+        type: commandType,
+        target: btn.target,
+        filter: btn.filter,
+        timestamp: Date.now(),
+      }
+
+      const validation = validateCommand(partialCommand)
+      if (!validation.valid) {
+        console.warn(`[PHASE2] Validation failed: ${validation.reason}`)
+        return false
+      }
+
+      const command = createCommand(commandType, {
+        target: btn.target,
+        filter: btn.filter,
+      })
+
+      console.log(commandToString(command))
+
+      if (!adapter) {
+        console.error("[PHASE2] Adapter not initialized")
+        return false
+      }
+
+      const result = await adapter.execute(command)
+
+      if (!result.success) {
+        console.error(`[PHASE2] Command failed: ${result.error}`)
+        showToast("Accion fallida", "error")
+        return false
+      }
+
+      return true
+    },
+    [connected, showToast, adapter],
   )
 
   const loadFilters = useCallback(async (sourceName: string) => {
