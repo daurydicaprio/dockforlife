@@ -175,6 +175,16 @@ export function OBSController() {
   const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
   const [isRemoteMode, setIsRemoteMode] = useState(false)
   const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none">("none")
+  const isRemoteModeRef = useRef(false)
+  const connectionModeRef = useRef<"local" | "remote" | "none">("none")
+
+  useEffect(() => {
+    isRemoteModeRef.current = isRemoteMode
+  }, [isRemoteMode])
+
+  useEffect(() => {
+    connectionModeRef.current = connectionMode
+  }, [connectionMode])
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("dfl_theme")
@@ -248,12 +258,22 @@ export function OBSController() {
   }, [])
 
   const connectOBS = useCallback(async () => {
-    console.log(`[OBS] connectOBS called with isRemoteMode=${isRemoteMode}, remoteUrl="${remoteUrl}", joinCode="${joinCode}"`)
+    const currentRemoteMode = isRemoteModeRef.current
+    const currentRemoteUrl = remoteUrl
+    const currentJoinCode = joinCode
+    
+    console.log(`[OBS] connectOBS called with isRemoteMode=${currentRemoteMode}, remoteUrl="${currentRemoteUrl}", joinCode="${currentJoinCode}"`)
     
     if (obsRef.current) {
       try {
+        console.log(`[OBS] Disconnecting previous socket...`)
         await obsRef.current.disconnect()
-      } catch {}
+        obsRef.current = null
+        setConnected(false)
+        setConnectionMode("none")
+      } catch (err) {
+        console.log(`[OBS] Previous socket disconnect error (ignored): ${err}`)
+      }
     }
 
     setIsConnecting(true)
@@ -263,18 +283,18 @@ export function OBSController() {
     obsRef.current = obs
 
     let targetUrl = wsUrl
-    let finalJoinCode = joinCode
+    let finalJoinCode = currentJoinCode
 
-    if (isRemoteMode) {
-      if (!remoteUrl || !joinCode) {
+    if (currentRemoteMode) {
+      if (!currentRemoteUrl || !currentJoinCode) {
         setIsConnecting(false)
         showToast("Remote URL and Join Code required", "error")
-        console.error(`[OBS] Remote mode enabled but missing: remoteUrl="${remoteUrl}", joinCode="${joinCode}"`)
+        console.error(`[OBS] Remote mode enabled but missing: remoteUrl="${currentRemoteUrl}", joinCode="${currentJoinCode}"`)
         return
       }
       
-      targetUrl = remoteUrl.startsWith("wss://") ? remoteUrl : `wss://${remoteUrl}`
-      finalJoinCode = joinCode.trim()
+      targetUrl = currentRemoteUrl.startsWith("wss://") ? currentRemoteUrl : `wss://${currentRemoteUrl}`
+      finalJoinCode = currentJoinCode.trim()
       
       setConnectionMode("remote")
       console.log(`[OBS] Connecting to remote worker: ${targetUrl}?code=${finalJoinCode}`)
@@ -287,9 +307,9 @@ export function OBSController() {
       console.log(`[OBS] Attempting WebSocket connection to: ${targetUrl}`)
       await obs.connect(targetUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
-      setConnectionMode(isRemoteMode ? "remote" : "local")
-      showToast(isRemoteMode ? "Connected via Cloudflare" : "Connected to OBS", "success")
-      console.log(`[OBS] Connected successfully (${isRemoteMode ? "remote" : "local"}) to ${targetUrl}`)
+      setConnectionMode(currentRemoteMode ? "remote" : "local")
+      showToast(currentRemoteMode ? "Connected via Cloudflare" : "Connected to OBS", "success")
+      console.log(`[OBS] Connected successfully (${currentRemoteMode ? "remote" : "local"}) to ${targetUrl}`)
 
       const special = await obs.call("GetSpecialInputs")
       setDeck((prev) =>
@@ -338,12 +358,12 @@ export function OBSController() {
       setConnected(false)
       setConnectionMode("none")
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
-      showToast(isRemoteMode ? `Worker error: ${errorMsg}` : `OBS error: ${errorMsg}`, "error")
+      showToast(currentRemoteMode ? `Worker error: ${errorMsg}` : `OBS error: ${errorMsg}`, "error")
       console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, remoteUrl, joinCode, isRemoteMode, showToast])
+  }, [wsUrl, wsPassword, remoteUrl, joinCode, showToast])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -669,11 +689,11 @@ export function OBSController() {
             isDark ? "border-zinc-800/50 bg-zinc-950/80" : "border-zinc-200/50 bg-zinc-50/80",
           )}
         >
-          <div className="container flex h-14 max-w-screen-xl mx-auto items-center justify-between px-4">
+          <div className="container flex h-16 max-w-screen-xl mx-auto items-center justify-between px-4">
             <div className="flex items-center gap-3">
-              <Logo className="h-8 w-8" />
+              <Logo className="h-10 w-10" />
               <div className="flex flex-col">
-                <h1 className="text-sm font-bold tracking-tight leading-none">
+                <h1 className="text-lg font-bold tracking-tight leading-none">
                   DOCK<span className="text-blue-500">FORLIFE</span>
                 </h1>
               </div>
@@ -1226,46 +1246,49 @@ export function OBSController() {
             <DialogTitle>{strings.settings.title}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
+            <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
               <Label htmlFor="ws-url">{strings.settings.wsUrl}</Label>
               <Input
                 id="ws-url"
                 value={wsUrl}
                 onChange={(e) => setWsUrl(e.target.value)}
                 placeholder={strings.settings.wsUrlPlaceholder}
-                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+                disabled={isRemoteMode}
+                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "cursor-not-allowed")}
               />
               <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
                 {strings.settings.wsUrlHint}
               </p>
             </div>
-            <div className="space-y-2">
+            <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
               <Label htmlFor="remote-url">{strings.settings.remoteUrl}</Label>
               <Input
                 id="remote-url"
                 value={remoteUrl}
                 onChange={(e) => setRemoteUrl(e.target.value)}
                 placeholder={strings.settings.remoteUrlPlaceholder}
-                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+                disabled={!isRemoteMode}
+                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "cursor-not-allowed")}
               />
               <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
                 {strings.settings.remoteUrlHint}
               </p>
             </div>
-            <div className="space-y-2">
+            <div className={cn("space-y-2", !isRemoteMode && "opacity-50")}>
               <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
               <Input
                 id="join-code"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
                 placeholder={strings.settings.joinCodePlaceholder}
-                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+                disabled={!isRemoteMode}
+                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "cursor-not-allowed")}
               />
               <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
                 {strings.settings.joinCodeHint}
               </p>
             </div>
-            <div className="space-y-2">
+            <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
               <Label htmlFor="ws-pass">{strings.settings.password}</Label>
               <Input
                 id="ws-pass"
@@ -1273,7 +1296,8 @@ export function OBSController() {
                 value={wsPassword}
                 onChange={(e) => setWsPassword(e.target.value)}
                 placeholder={strings.settings.passwordPlaceholder}
-                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+                disabled={isRemoteMode}
+                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "cursor-not-allowed")}
               />
             </div>
 
@@ -1313,11 +1337,24 @@ export function OBSController() {
               </div>
               <button
                 id="remote-mode"
-                onClick={() => {
+                onClick={async () => {
                   const newValue = !isRemoteMode
                   setIsRemoteMode(newValue)
                   localStorage.setItem("dfl_remote_mode", String(newValue))
                   console.log(`[UI] Remote mode ${newValue ? "enabled" : "disabled"}`)
+                  
+                  if (connected) {
+                    console.log(`[UI] Resetting connection due to mode change...`)
+                    if (obsRef.current) {
+                      try {
+                        await obsRef.current.disconnect()
+                      } catch {}
+                      obsRef.current = null
+                    }
+                    setConnected(false)
+                    setConnectionMode("none")
+                    showToast(newValue ? "Switched to Remote Mode" : "Switched to Local Mode", "success")
+                  }
                 }}
                 className={cn(
                   "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
