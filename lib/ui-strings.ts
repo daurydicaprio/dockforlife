@@ -67,12 +67,30 @@ export interface UIStrings {
     wsUrl: string
     wsUrlPlaceholder: string
     wsUrlHint: string
+    remoteUrl: string
+    remoteUrlPlaceholder: string
+    remoteUrlHint: string
+    joinCode: string
+    joinCodePlaceholder: string
+    joinCodeHint: string
     password: string
     passwordPlaceholder: string
     status: {
       connected: string
       notConnected: string
+      localMode: string
+      remoteMode: string
     }
+    language: string
+    languageSelect: string
+    languageEn: string
+    languageEs: string
+    desktopAgent: string
+    desktopAgentDesc: string
+    download: string
+    downloadFor: string
+    noInstall: string
+    agentNote: string
     button: string
     connecting: string
   }
@@ -85,6 +103,7 @@ export interface UIStrings {
     notConnected: string
     actionFailed: string
     notFound: string
+    langChanged: string
   }
   dialogs: {
     deleteTitle: string
@@ -167,12 +186,30 @@ export const strings: Record<Language, UIStrings> = {
       wsUrl: "WebSocket URL",
       wsUrlPlaceholder: "ws://127.0.0.1:4455",
       wsUrlHint: "Use your PC's IP for another device",
+      remoteUrl: "Remote URL (Cloudflare)",
+      remoteUrlPlaceholder: "wss://your-worker.workers.dev",
+      remoteUrlHint: "Optional: Connect via Cloudflare Worker",
+      joinCode: "Join Code",
+      joinCodePlaceholder: "abc123-xxy789",
+      joinCodeHint: "Optional: Code from your Cloudflare tunnel",
       password: "Password (optional)",
       passwordPlaceholder: "OBS WebSocket password",
       status: {
         connected: "Connected to OBS",
         notConnected: "Not connected",
+        localMode: "Local Mode",
+        remoteMode: "Remote Mode",
       },
+      language: "Language",
+      languageSelect: "Select language",
+      languageEn: "English",
+      languageEs: "Español",
+      desktopAgent: "Desktop Agent",
+      desktopAgentDesc: "Download the local agent for remote access",
+      download: "Download",
+      downloadFor: "Download for",
+      noInstall: "No installation required",
+      agentNote: "Small executable (~7MB). Runs in background.",
       button: "Connect",
       connecting: "Connecting...",
     },
@@ -185,6 +222,7 @@ export const strings: Record<Language, UIStrings> = {
       notConnected: "Not connected to OBS",
       actionFailed: "Action failed",
       notFound: "not found",
+      langChanged: "Language changed",
     },
     dialogs: {
       deleteTitle: "Delete button?",
@@ -265,12 +303,30 @@ export const strings: Record<Language, UIStrings> = {
       wsUrl: "URL WebSocket",
       wsUrlPlaceholder: "ws://127.0.0.1:4455",
       wsUrlHint: "Para otro dispositivo usa la IP de tu PC",
+      remoteUrl: "URL Remota (Cloudflare)",
+      remoteUrlPlaceholder: "wss://tu-worker.workers.dev",
+      remoteUrlHint: "Opcional: Conectar vía Cloudflare Worker",
+      joinCode: "Código de Unión",
+      joinCodePlaceholder: "abc123-xxy789",
+      joinCodeHint: "Opcional: Código de tu túnel Cloudflare",
       password: "Contraseña (opcional)",
       passwordPlaceholder: "Contraseña de WebSocket OBS",
       status: {
         connected: "Conectado a OBS",
         notConnected: "No conectado",
+        localMode: "Modo Local",
+        remoteMode: "Modo Remoto",
       },
+      language: "Idioma",
+      languageSelect: "Seleccionar idioma",
+      languageEn: "English",
+      languageEs: "Español",
+      desktopAgent: "Agente de Escritorio",
+      desktopAgentDesc: "Descarga el agente local para acceso remoto",
+      download: "Descargar",
+      downloadFor: "Descargar para",
+      noInstall: "No requiere instalación",
+      agentNote: "Ejecutable pequeño (~7MB). Funciona en segundo plano.",
       button: "Conectar",
       connecting: "Conectando...",
     },
@@ -283,6 +339,7 @@ export const strings: Record<Language, UIStrings> = {
       notConnected: "No conectado a OBS",
       actionFailed: "Acción fallida",
       notFound: "no encontrado",
+      langChanged: "Idioma cambiado",
     },
     dialogs: {
       deleteTitle: "¿Eliminar botón?",
@@ -295,4 +352,15 @@ export const strings: Record<Language, UIStrings> = {
 
 export function getStrings(lang: Language): UIStrings {
   return strings[lang]
+}
+
+export function detectBrowserLanguage(): Language {
+  if (typeof window === "undefined") return "en"
+  
+  const browserLang = navigator.language?.toLowerCase() || ""
+  
+  if (browserLang.startsWith("es")) {
+    return "es"
+  }
+  return "en"
 }

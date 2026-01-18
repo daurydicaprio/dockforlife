@@ -30,7 +30,9 @@ import {
   commandToString,
 } from "@/lib/obs-validator"
 import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
-import { getStrings, Language, UIStrings } from "@/lib/ui-strings"
+import { getStrings, Language, UIStrings, detectBrowserLanguage } from "@/lib/ui-strings"
+import { createConnectionManager, ConnectionManager, ConnectionState, ConnectionMode } from "@/lib/connection-manager"
+import { Download, Monitor, Smartphone } from "lucide-react"
 import {
   Mic,
   Eye,
@@ -160,6 +162,8 @@ export function OBSController() {
   const [filters, setFilters] = useState<string[]>([])
   const [wsUrl, setWsUrl] = useState("ws://127.0.0.1:4455")
   const [wsPassword, setWsPassword] = useState("")
+  const [remoteUrl, setRemoteUrl] = useState("")
+  const [joinCode, setJoinCode] = useState("")
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [muteStates, setMuteStates] = useState<Record<string, boolean>>({})
@@ -168,6 +172,7 @@ export function OBSController() {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [adapter, setAdapter] = useState<OBSWebSocketAdapter | null>(null)
+  const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("dfl_theme")
@@ -184,8 +189,34 @@ export function OBSController() {
 
     const savedUrl = localStorage.getItem("dfl_ws_url")
     const savedPass = localStorage.getItem("dfl_ws_pass")
+    const savedRemoteUrl = localStorage.getItem("dfl_remote_url")
+    const savedJoinCode = localStorage.getItem("dfl_join_code")
     if (savedUrl) setWsUrl(savedUrl)
     if (savedPass) setWsPassword(savedPass)
+    if (savedRemoteUrl) setRemoteUrl(savedRemoteUrl)
+    if (savedJoinCode) setJoinCode(savedJoinCode)
+
+    const savedLang = localStorage.getItem("dfl_lang") as Language | null
+    if (savedLang && (savedLang === "en" || savedLang === "es")) {
+      setLang(savedLang)
+      setStrings(getStrings(savedLang))
+    } else {
+      const detectedLang = detectBrowserLanguage()
+      setLang(detectedLang)
+      setStrings(getStrings(detectedLang))
+      localStorage.setItem("dfl_lang", detectedLang)
+    }
+
+    const platform = navigator.platform.toLowerCase()
+    if (platform.includes("win")) {
+      setUserOS("windows")
+    } else if (platform.includes("mac") || platform.includes("darwin")) {
+      setUserOS("macos")
+    } else if (platform.includes("linux") || platform.includes("unix")) {
+      setUserOS("linux")
+    } else {
+      setUserOS("other")
+    }
 
     // Show onboarding on first visit
     const hasVisited = localStorage.getItem("dfl_visited")
@@ -269,13 +300,15 @@ export function OBSController() {
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
+      localStorage.setItem("dfl_remote_url", remoteUrl)
+      localStorage.setItem("dfl_join_code", joinCode)
     } catch {
       setConnected(false)
       showToast("Error al conectar con OBS", "error")
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, showToast])
+  }, [wsUrl, wsPassword, remoteUrl, joinCode, showToast])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -1133,32 +1166,180 @@ export function OBSController() {
           )}
         >
           <DialogHeader>
-            <DialogTitle>Conexion OBS</DialogTitle>
+            <DialogTitle>{strings.settings.title}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="ws-url">URL WebSocket</Label>
+              <Label htmlFor="ws-url">{strings.settings.wsUrl}</Label>
               <Input
                 id="ws-url"
                 value={wsUrl}
                 onChange={(e) => setWsUrl(e.target.value)}
-                placeholder="ws://127.0.0.1:4455"
+                placeholder={strings.settings.wsUrlPlaceholder}
                 className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
               />
               <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                Para otro dispositivo usa la IP de tu PC
+                {strings.settings.wsUrlHint}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ws-pass">Contrasena (opcional)</Label>
+              <Label htmlFor="remote-url">{strings.settings.remoteUrl}</Label>
+              <Input
+                id="remote-url"
+                value={remoteUrl}
+                onChange={(e) => setRemoteUrl(e.target.value)}
+                placeholder={strings.settings.remoteUrlPlaceholder}
+                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+              />
+              <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                {strings.settings.remoteUrlHint}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
+              <Input
+                id="join-code"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                placeholder={strings.settings.joinCodePlaceholder}
+                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+              />
+              <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                {strings.settings.joinCodeHint}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ws-pass">{strings.settings.password}</Label>
               <Input
                 id="ws-pass"
                 type="password"
                 value={wsPassword}
                 onChange={(e) => setWsPassword(e.target.value)}
-                placeholder="Contrasena de WebSocket OBS"
+                placeholder={strings.settings.passwordPlaceholder}
                 className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{strings.settings.language}</Label>
+              <Select
+                value={lang}
+                onValueChange={(value: Language) => {
+                  setLang(value)
+                  setStrings(getStrings(value))
+                  localStorage.setItem("dfl_lang", value)
+                  showToast(strings.toasts.langChanged, "success")
+                }}
+              >
+                <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">
+                    <span className="flex items-center gap-2">
+                      <span className="text-lg">🇺🇸</span> {strings.settings.languageEn}
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="es">
+                    <span className="flex items-center gap-2">
+                      <span className="text-lg">🇪🇸</span> {strings.settings.languageEs}
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div
+              className={cn(
+                "rounded-lg p-4 border",
+                isDark ? "bg-zinc-800/50 border-zinc-700" : "bg-zinc-50 border-zinc-200",
+              )}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Monitor className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-600")} />
+                <h3 className="font-semibold text-sm">{strings.settings.desktopAgent}</h3>
+              </div>
+              <p className={cn("text-xs mb-3", isDark ? "text-zinc-400" : "text-zinc-600")}>
+                {strings.settings.desktopAgentDesc}
+              </p>
+              <div className="space-y-2">
+                {userOS === "windows" && (
+                  <a
+                    href="/downloads/bin/win/agent.exe"
+                    download
+                    className={cn(
+                      "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
+                      isDark
+                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                        : "bg-blue-100 text-blue-600 hover:bg-blue-200",
+                    )}
+                  >
+                    <Download className="h-4 w-4" />
+                    {strings.settings.downloadFor} Windows
+                  </a>
+                )}
+                {userOS === "macos" && (
+                  <a
+                    href="/downloads/bin/macos/agent"
+                    download
+                    className={cn(
+                      "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
+                      isDark
+                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                        : "bg-blue-100 text-blue-600 hover:bg-blue-200",
+                    )}
+                  >
+                    <Download className="h-4 w-4" />
+                    {strings.settings.downloadFor} macOS
+                  </a>
+                )}
+                {userOS === "linux" && (
+                  <a
+                    href="/downloads/bin/linux/agent"
+                    download
+                    className={cn(
+                      "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
+                      isDark
+                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                        : "bg-blue-100 text-blue-600 hover:bg-blue-200",
+                    )}
+                  >
+                    <Download className="h-4 w-4" />
+                    {strings.settings.downloadFor} Linux
+                  </a>
+                )}
+                {userOS === "other" && (
+                  <div className="flex gap-2">
+                    <a
+                      href="/downloads/bin/win/agent.exe"
+                      download
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium",
+                        isDark
+                          ? "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300",
+                      )}
+                    >
+                      Windows
+                    </a>
+                    <a
+                      href="/downloads/bin/linux/agent"
+                      download
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium",
+                        isDark
+                          ? "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300",
+                      )}
+                    >
+                      Linux
+                    </a>
+                  </div>
+                )}
+                <p className={cn("text-[10px] text-center", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                  {strings.settings.agentNote}
+                </p>
+              </div>
             </div>
 
             <div
@@ -1176,19 +1357,19 @@ export function OBSController() {
               {connected ? (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  Conectado a OBS
+                  {strings.settings.status.connected}
                 </>
               ) : (
                 <>
                   <XCircle className="h-4 w-4" />
-                  No conectado
+                  {strings.settings.status.notConnected}
                 </>
               )}
             </div>
           </div>
           <DialogFooter>
             <Button onClick={connectOBS} className="w-full" disabled={isConnecting}>
-              {isConnecting ? "Conectando..." : connected ? "Reconectar" : "Conectar"}
+              {isConnecting ? strings.settings.connecting : connected ? strings.settings.button : strings.settings.button}
             </Button>
           </DialogFooter>
         </DialogContent>
