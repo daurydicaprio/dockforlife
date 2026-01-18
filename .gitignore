@@ -1,30 +1,37 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# Dependencies
 /node_modules
+/vendor
+.pnpm-debug.log*
 
-# next.js
+# Next.js & Production
 /.next/
 /out/
-
-# production
 /build
+dist/
 
-# debug
+# Binaries & Go execution
+bin/
+agent
+*.exe
+*.test
+*.out
+
+# Debug & Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+*.log
 
-# env files
+# Environment & Config
 .env*
-
-# vercel
 .vercel
+wrangler.toml
+.dev.vars
 
-# typescript
+# Planning (Ignorado por Git según tus instrucciones)
+PLAN.md
+plan.md
+
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
-
-# local planning
-PLAN.md
