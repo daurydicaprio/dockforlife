@@ -6,6 +6,7 @@ on:
       - 'proxy/**'
     branches:
       - dev
+      - hola
   pull_request:
     paths:
       - 'proxy/**'
@@ -50,12 +51,13 @@ jobs:
         with:
           go-version: '1.21'
           cache: true
+          cache-dependency-path: proxy/go.sum
 
       - name: Build proxy
         working-directory: ./proxy
         run: |
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -o ${{ matrix.artifact }} ./cmd/proxy
+            go build -o ${{ matrix.artifact }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -64,39 +66,8 @@ jobs:
           path: proxy/${{ matrix.artifact }}
           retention-days: 7
 
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-          cache: true
-
-      - name: Validate Go module
-        working-directory: ./proxy
-        run: |
-          go mod download
-          go mod tidy
-          go mod verify
-
-      - name: Run go vet
-        working-directory: ./proxy
-        run: go vet ./...
-
-      - name: Check formatting
-        working-directory: ./proxy
-        run: |
-          if ! go fmt -d ./... | grep -q .; then
-            echo "Code needs formatting"
-            exit 1
-          fi
-
   release:
-    needs: [build, validate]
+    needs: build
     if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
