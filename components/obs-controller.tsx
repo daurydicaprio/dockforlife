@@ -30,6 +30,7 @@ import {
   commandToString,
 } from "@/lib/obs-validator"
 import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
+import { getStrings, Language, UIStrings } from "@/lib/ui-strings"
 import {
   Mic,
   Eye,
@@ -133,6 +134,8 @@ export function OBSController() {
   const obsRef = useRef<OBSWebSocket | null>(null)
   const [deck, setDeck] = useState<DeckButton[]>([])
   const [connected, setConnected] = useState(false)
+  const [lang, setLang] = useState<Language>("en")
+  const [strings, setStrings] = useState<UIStrings>(getStrings("en"))
   const [obsData, setObsData] = useState<OBSData>({
     scenes: [],
     inputs: [],
@@ -586,78 +589,76 @@ export function OBSController() {
   return (
     <div
       className={cn(
-        "min-h-screen flex flex-col transition-colors duration-300",
+        "min-h-screen flex flex-col transition-colors duration-300 max-w-4xl mx-auto w-full",
         isDark ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900",
       )}
     >
-      {/* Header */}
-      <header
-        className={cn(
-          "sticky top-0 z-40 border-b backdrop-blur-xl",
-          isDark ? "border-zinc-800/50 bg-zinc-950/80" : "border-zinc-200/50 bg-zinc-50/80",
-        )}
-      >
-        <div className="container flex h-14 max-w-screen-xl items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <Logo className="h-7 w-7" />
-            <div className="flex flex-col">
-              <h1 className="text-sm font-bold tracking-tight leading-none">
-                DOCK<span className="text-blue-500">FORLIFE</span>
-              </h1>
-              <span className={cn("text-[9px] font-mono", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                v0.001 BETA
-              </span>
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header
+          className={cn(
+            "sticky top-0 z-40 border-b backdrop-blur-xl",
+            isDark ? "border-zinc-800/50 bg-zinc-950/80" : "border-zinc-200/50 bg-zinc-50/80",
+          )}
+        >
+          <div className="container flex h-14 max-w-screen-xl mx-auto items-center justify-between px-4">
+            <div className="flex items-center gap-3">
+              <Logo className="h-8 w-8" />
+              <div className="flex flex-col">
+                <h1 className="text-sm font-bold tracking-tight leading-none">
+                  DOCK<span className="text-blue-500">FORLIFE</span>
+                </h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setSecurityOpen(true)}
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-colors",
+                  isDark
+                    ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
+                    : "bg-green-100 text-green-600 hover:bg-green-200",
+                )}
+              >
+                <Shield className="h-3 w-3" />
+                <span className="hidden sm:inline">Secure</span>
+              </button>
+              <div
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
+                  connected
+                    ? isDark
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-emerald-100 text-emerald-600"
+                    : isDark
+                      ? "bg-zinc-800 text-zinc-500"
+                      : "bg-zinc-200 text-zinc-500",
+                )}
+              >
+                {connected ? (
+                  <>
+                    <Wifi className="h-3 w-3" />
+                    <span className="hidden sm:inline">ONLINE</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-3 w-3" />
+                    <span className="hidden sm:inline">OFFLINE</span>
+                  </>
+                )}
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsDark(!isDark)}>
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSettingsOpen(true)}>
+                <Settings className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setSecurityOpen(true)}
-              className={cn(
-                "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-colors",
-                isDark
-                  ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                  : "bg-green-100 text-green-600 hover:bg-green-200",
-              )}
-            >
-              <Shield className="h-3 w-3" />
-              Seguro
-            </button>
-            <div
-              className={cn(
-                "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
-                connected
-                  ? isDark
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : "bg-emerald-100 text-emerald-600"
-                  : isDark
-                    ? "bg-zinc-800 text-zinc-500"
-                    : "bg-zinc-200 text-zinc-500",
-              )}
-            >
-              {connected ? (
-                <>
-                  <Wifi className="h-3 w-3" />
-                  <span className="hidden sm:inline">ONLINE</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="h-3 w-3" />
-                  <span className="hidden sm:inline">OFFLINE</span>
-                </>
-              )}
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsDark(!isDark)}>
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSettingsOpen(true)}>
-              <Settings className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Grid */}
-      <main className="flex-1 container max-w-screen-xl px-3 py-4 sm:px-4 sm:py-6">
+        {/* Main Grid */}
+        <main className="flex-1 container max-w-screen-xl mx-auto px-3 py-4 sm:px-4 sm:py-6">
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3">
           {deck.map((btn, i) => {
             const isRecording = btn.type === "Record" && obsData.rec
@@ -797,6 +798,7 @@ export function OBSController() {
           <p className={cn("text-[10px]", isDark ? "text-zinc-700" : "text-zinc-400")}>v0.001 BETA</p>
         </div>
       </footer>
+      </div>
 
       {/* Onboarding Modal */}
       <Dialog open={onboardingOpen} onOpenChange={setOnboardingOpen}>
