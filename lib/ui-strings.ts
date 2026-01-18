@@ -80,7 +80,11 @@ export interface UIStrings {
       notConnected: string
       localMode: string
       remoteMode: string
+      connecting: string
+      error: string
     }
+    remoteMode: string
+    remoteModeEnabled: string
     language: string
     languageSelect: string
     languageEn: string
@@ -199,7 +203,11 @@ export const strings: Record<Language, UIStrings> = {
         notConnected: "Not connected",
         localMode: "Local Mode",
         remoteMode: "Remote Mode",
+        connecting: "Connecting...",
+        error: "Connection error",
       },
+      remoteMode: "Remote Mode",
+      remoteModeEnabled: "Using Cloudflare Worker",
       language: "Language",
       languageSelect: "Select language",
       languageEn: "English",
@@ -316,7 +324,11 @@ export const strings: Record<Language, UIStrings> = {
         notConnected: "No conectado",
         localMode: "Modo Local",
         remoteMode: "Modo Remoto",
+        connecting: "Conectando...",
+        error: "Error de conexión",
       },
+      remoteMode: "Modo Remoto",
+      remoteModeEnabled: "Usando Cloudflare Worker",
       language: "Idioma",
       languageSelect: "Seleccionar idioma",
       languageEn: "English",

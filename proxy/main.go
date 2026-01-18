@@ -108,6 +108,8 @@ func (a *Agent) connectToWorker() error {
 		return fmt.Errorf("failed to register: %w", err)
 	}
 
+	log.Printf("[Agent] Registered with join code: %s", a.cfg.JoinCode)
+
 	go a.handleWorkerMessages()
 
 	return nil
@@ -147,7 +149,7 @@ func (a *Agent) handleOBSMessages() {
 				continue
 			}
 
-			log.Printf("[Agent] OBS Event: %v", obsEvent)
+			log.Printf("[Agent] OBS Event received")
 
 			if a.workerConn != nil {
 				workerMsg := map[string]interface{}{
@@ -155,22 +157,47 @@ func (a *Agent) handleOBSMessages() {
 					"joinCode":  a.cfg.JoinCode,
 					"eventData": obsEvent,
 				}
-				a.workerConn.WriteJSON(workerMsg)
+				if err := a.workerConn.WriteJSON(workerMsg); err != nil {
+					log.Printf("[Agent] Failed to send OBS event to worker: %v", err)
+				} else {
+					log.Printf("[Agent] Sent OBS event to worker")
+				}
 			}
 		}
 	}
 }
 
 func (a *Agent) handleWorkerMessages() {
+	pingTicker := time.NewTicker(15 * time.Second)
+	defer pingTicker.Stop()
+
 	for {
 		select {
 		case <-a.ctx.Done():
 			return
+		case <-pingTicker.C:
+			if a.workerConn != nil {
+				log.Printf("[Agent] Sending pong")
+				a.workerConn.WriteMessage(websocket.TextMessage, []byte("pong"))
+			}
 		default:
+			if a.workerConn == nil {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+
 			_, message, err := a.workerConn.ReadMessage()
 			if err != nil {
 				log.Printf("[Agent] Worker read error: %v", err)
 				return
+			}
+
+			messageStr := string(message)
+			log.Printf("[Agent] Worker Message: %s", messageStr)
+
+			if messageStr == "pong" {
+				log.Printf("[Agent] Received pong from worker")
+				continue
 			}
 
 			var workerMsg map[string]interface{}
@@ -178,20 +205,31 @@ func (a *Agent) handleWorkerMessages() {
 				continue
 			}
 
-			log.Printf("[Agent] Worker Message: %v", workerMsg)
-
 			msgType, ok := workerMsg["type"].(string)
 			if !ok {
 				continue
 			}
 
 			switch msgType {
+			case "ping":
+				log.Printf("[Agent] Received ping, sending pong")
+				a.workerConn.WriteMessage(websocket.TextMessage, []byte("pong"))
+
 			case "command":
 				method, _ := workerMsg["method"].(string)
 				params, _ := workerMsg["params"].(map[string]interface{})
 				if method != "" {
-					a.SendCommand(method, params)
+					log.Printf("[Agent] Executing command: %s", method)
+					if err := a.SendCommand(method, params); err != nil {
+						log.Printf("[Agent] Command failed: %v", err)
+					}
 				}
+
+			case "client_joined":
+				log.Printf("[Agent] Client joined the session")
+
+			case "host_disconnected":
+				log.Printf("[Agent] Host disconnected (should not happen for host)")
 			}
 		}
 	}

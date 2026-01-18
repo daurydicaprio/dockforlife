@@ -173,6 +173,8 @@ export function OBSController() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [adapter, setAdapter] = useState<OBSWebSocketAdapter | null>(null)
   const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
+  const [isRemoteMode, setIsRemoteMode] = useState(false)
+  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none">("none")
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("dfl_theme")
@@ -191,10 +193,12 @@ export function OBSController() {
     const savedPass = localStorage.getItem("dfl_ws_pass")
     const savedRemoteUrl = localStorage.getItem("dfl_remote_url")
     const savedJoinCode = localStorage.getItem("dfl_join_code")
+    const savedRemoteMode = localStorage.getItem("dfl_remote_mode")
     if (savedUrl) setWsUrl(savedUrl)
     if (savedPass) setWsPassword(savedPass)
     if (savedRemoteUrl) setRemoteUrl(savedRemoteUrl)
     if (savedJoinCode) setJoinCode(savedJoinCode)
+    if (savedRemoteMode === "true") setIsRemoteMode(true)
 
     const savedLang = localStorage.getItem("dfl_lang") as Language | null
     if (savedLang && (savedLang === "en" || savedLang === "es")) {
@@ -251,14 +255,33 @@ export function OBSController() {
     }
 
     setIsConnecting(true)
+    setConnectionMode("none")
+
     const obs = new OBSWebSocket()
     obsRef.current = obs
 
+    let targetUrl = wsUrl
+    if (isRemoteMode) {
+      if (!remoteUrl || !joinCode) {
+        setIsConnecting(false)
+        showToast("Remote URL and Join Code required", "error")
+        console.error("[OBS] Remote mode enabled but missing remoteUrl or joinCode")
+        return
+      }
+      targetUrl = remoteUrl.startsWith("wss://") ? remoteUrl : `wss://${remoteUrl}`
+      setConnectionMode("remote")
+      console.log(`[OBS] Connecting to remote worker: ${targetUrl} (code: ${joinCode})`)
+    } else {
+      setConnectionMode("local")
+      console.log(`[OBS] Connecting to local OBS: ${targetUrl}`)
+    }
+
     try {
-      await obs.connect(wsUrl, wsPassword || undefined, { rpcVersion: 1 })
+      await obs.connect(targetUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
-      showToast("Conectado a OBS", "success")
-      console.log("[OBS] Connected")
+      setConnectionMode(isRemoteMode ? "remote" : "local")
+      showToast(isRemoteMode ? "Connected via Cloudflare" : "Connected to OBS", "success")
+      console.log(`[OBS] Connected (${isRemoteMode ? "remote" : "local"})`)
 
       const special = await obs.call("GetSpecialInputs")
       setDeck((prev) =>
@@ -302,13 +325,17 @@ export function OBSController() {
       localStorage.setItem("dfl_ws_pass", wsPassword)
       localStorage.setItem("dfl_remote_url", remoteUrl)
       localStorage.setItem("dfl_join_code", joinCode)
-    } catch {
+      localStorage.setItem("dfl_remote_mode", String(isRemoteMode))
+    } catch (error) {
       setConnected(false)
-      showToast("Error al conectar con OBS", "error")
+      setConnectionMode("none")
+      const errorMsg = error instanceof Error ? error.message : "Unknown error"
+      showToast(isRemoteMode ? `Worker error: ${errorMsg}` : `OBS error: ${errorMsg}`, "error")
+      console.error(`[OBS] Connection failed: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, remoteUrl, joinCode, showToast])
+  }, [wsUrl, wsPassword, remoteUrl, joinCode, isRemoteMode, showToast])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -659,20 +686,40 @@ export function OBSController() {
               <div
                 className={cn(
                   "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
-                  connected
+                  isConnecting
                     ? isDark
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-emerald-100 text-emerald-600"
-                    : isDark
-                      ? "bg-zinc-800 text-zinc-500"
-                      : "bg-zinc-200 text-zinc-500",
+                      ? "bg-amber-500/10 text-amber-400"
+                      : "bg-amber-100 text-amber-600"
+                    : connected
+                      ? connectionMode === "remote"
+                        ? isDark
+                          ? "bg-blue-500/10 text-blue-400"
+                          : "bg-blue-100 text-blue-600"
+                        : isDark
+                          ? "bg-emerald-500/10 text-emerald-400"
+                          : "bg-emerald-100 text-emerald-600"
+                      : isDark
+                        ? "bg-zinc-800 text-zinc-500"
+                        : "bg-zinc-200 text-zinc-500",
                 )}
               >
-                {connected ? (
+                {isConnecting ? (
                   <>
-                    <Wifi className="h-3 w-3" />
-                    <span className="hidden sm:inline">ONLINE</span>
+                    <div className="h-3 w-3 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="hidden sm:inline">CONNECTING</span>
                   </>
+                ) : connected ? (
+                  connectionMode === "remote" ? (
+                    <>
+                      <Wifi className="h-3 w-3" />
+                      <span className="hidden sm:inline">REMOTE</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wifi className="h-3 w-3" />
+                      <span className="hidden sm:inline">LOCAL</span>
+                    </>
+                  )
                 ) : (
                   <>
                     <WifiOff className="h-3 w-3" />
@@ -1218,6 +1265,62 @@ export function OBSController() {
                 placeholder={strings.settings.passwordPlaceholder}
                 className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
               />
+            </div>
+
+            <div
+              className={cn(
+                "flex items-center justify-between p-3 rounded-lg border",
+                isRemoteMode
+                  ? isDark
+                    ? "bg-blue-500/10 border-blue-500/30"
+                    : "bg-blue-50 border-blue-200"
+                  : isDark
+                    ? "bg-zinc-800/50 border-zinc-700"
+                    : "bg-zinc-50 border-zinc-200",
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    "flex items-center justify-center w-10 h-10 rounded-full",
+                    isRemoteMode
+                      ? "bg-blue-500/20"
+                      : isDark
+                        ? "bg-zinc-700"
+                        : "bg-zinc-200",
+                  )}
+                >
+                  <Globe className={cn("h-5 w-5", isRemoteMode ? "text-blue-400" : isDark ? "text-zinc-500" : "text-zinc-400")} />
+                </div>
+                <div>
+                  <Label htmlFor="remote-mode" className="cursor-pointer">
+                    Remote Mode
+                  </Label>
+                  <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                    {isRemoteMode ? "Using Cloudflare Worker" : "Use local OBS connection"}
+                  </p>
+                </div>
+              </div>
+              <button
+                id="remote-mode"
+                onClick={() => {
+                  const newValue = !isRemoteMode
+                  setIsRemoteMode(newValue)
+                  localStorage.setItem("dfl_remote_mode", String(newValue))
+                  console.log(`[UI] Remote mode ${newValue ? "enabled" : "disabled"}`)
+                }}
+                className={cn(
+                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                  isRemoteMode ? "bg-blue-500" : "bg-zinc-600",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
+                    isRemoteMode ? "translate-x-6" : "translate-x-1",
+                  )}
+                />
+              </button>
             </div>
 
             <div className="space-y-2">
