@@ -1,0 +1,16 @@
+name = "dfl-bridge"
+main = "index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id = "a7ba0a4b47014767bf419a6023853db1"
+
+[triggers]
+crons = []
+
+[build]
+command = "npm install"
