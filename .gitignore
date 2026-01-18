@@ -1,34 +1,34 @@
-# Dependencies
-/node_modules
-/vendor
+# Dependencias (Cualquier nivel)
+**/node_modules/
+**/vendor/
 .pnpm-debug.log*
 
 # Next.js & Production
 /.next/
 /out/
 /build
-dist/
+/dist/
+**/dist/
 
-# Binaries & Go execution
+# Binarios y ejecutables
 bin/
 agent
 *.exe
 *.test
 *.out
 
-# Debug & Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Logs
 *.log
+npm-debug.log*
 
-# Environment & Config
+# Cloudflare & Environment
 .env*
+.dev.vars
 .vercel
 wrangler.toml
-.dev.vars
+.wrangler/
 
-# Planning (Ignorado por Git según tus instrucciones)
+# Planning (Ignorado según instrucciones)
 PLAN.md
 plan.md
 
