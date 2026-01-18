@@ -212,6 +212,7 @@ export function OBSController() {
       await obs.connect(wsUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
       showToast("Conectado a OBS", "success")
+      console.log("[OBS] Connected")
 
       const special = await obs.call("GetSpecialInputs")
       setDeck((prev) =>
@@ -243,6 +244,9 @@ export function OBSController() {
         rec: false,
         str: false,
       })
+
+      console.log(`[OBS] Scenes loaded: ${sceneList.scenes.length}`)
+      console.log(`[OBS] Inputs loaded: ${inputList.inputs.length}`)
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
@@ -305,6 +309,8 @@ export function OBSController() {
         return
       }
 
+      console.log(`[EXECUTE] Action=${btn.type} Target=${btn.target || ""} Filter=${btn.filter || ""}`)
+
       const obs = obsRef.current
 
       try {
@@ -318,11 +324,15 @@ export function OBSController() {
           case "Scene":
             if (btn.target) {
               await obs.call("SetCurrentProgramScene", { sceneName: btn.target })
+            } else {
+              console.warn("[EXECUTE] Empty target for Scene action")
             }
             break
           case "Mute":
             if (btn.target) {
               await obs.call("ToggleInputMute", { inputName: btn.target })
+            } else {
+              console.warn("[EXECUTE] Empty target for Mute action")
             }
             break
           case "Filter":
@@ -336,6 +346,13 @@ export function OBSController() {
                 filterName: btn.filter,
                 filterEnabled: !filterEnabled,
               })
+            } else {
+              if (!btn.target) {
+                console.warn("[EXECUTE] Empty target for Filter action")
+              }
+              if (!btn.filter) {
+                console.warn("[EXECUTE] Empty filter for Filter action")
+              }
             }
             break
           case "Visibility":
@@ -358,10 +375,18 @@ export function OBSController() {
               } else {
                 showToast(`"${btn.target}" no encontrado`, "error")
               }
+            } else {
+              console.warn("[EXECUTE] Empty target for Visibility action")
             }
             break
         }
-      } catch {
+      } catch (error) {
+        console.error("[EXECUTE] Action failed:", {
+          type: btn.type,
+          target: btn.target,
+          filter: btn.filter,
+          error: error instanceof Error ? error.message : String(error),
+        })
         showToast("Accion fallida", "error")
       }
     },
@@ -379,6 +404,7 @@ export function OBSController() {
         sourceName,
       })
       setFilters(filterList.map((f) => f.filterName as string))
+      console.log(`[OBS] Filters loaded: ${filterList.length} for source: ${sourceName}`)
     } catch {
       setFilters([])
     }
