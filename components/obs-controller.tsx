@@ -248,6 +248,8 @@ export function OBSController() {
   }, [])
 
   const connectOBS = useCallback(async () => {
+    console.log(`[OBS] connectOBS called with isRemoteMode=${isRemoteMode}, remoteUrl="${remoteUrl}", joinCode="${joinCode}"`)
+    
     if (obsRef.current) {
       try {
         await obsRef.current.disconnect()
@@ -261,27 +263,33 @@ export function OBSController() {
     obsRef.current = obs
 
     let targetUrl = wsUrl
+    let finalJoinCode = joinCode
+
     if (isRemoteMode) {
       if (!remoteUrl || !joinCode) {
         setIsConnecting(false)
         showToast("Remote URL and Join Code required", "error")
-        console.error("[OBS] Remote mode enabled but missing remoteUrl or joinCode")
+        console.error(`[OBS] Remote mode enabled but missing: remoteUrl="${remoteUrl}", joinCode="${joinCode}"`)
         return
       }
+      
       targetUrl = remoteUrl.startsWith("wss://") ? remoteUrl : `wss://${remoteUrl}`
+      finalJoinCode = joinCode.trim()
+      
       setConnectionMode("remote")
-      console.log(`[OBS] Connecting to remote worker: ${targetUrl} (code: ${joinCode})`)
+      console.log(`[OBS] Connecting to remote worker: ${targetUrl}?code=${finalJoinCode}`)
     } else {
       setConnectionMode("local")
       console.log(`[OBS] Connecting to local OBS: ${targetUrl}`)
     }
 
     try {
+      console.log(`[OBS] Attempting WebSocket connection to: ${targetUrl}`)
       await obs.connect(targetUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
       setConnectionMode(isRemoteMode ? "remote" : "local")
       showToast(isRemoteMode ? "Connected via Cloudflare" : "Connected to OBS", "success")
-      console.log(`[OBS] Connected (${isRemoteMode ? "remote" : "local"})`)
+      console.log(`[OBS] Connected successfully (${isRemoteMode ? "remote" : "local"}) to ${targetUrl}`)
 
       const special = await obs.call("GetSpecialInputs")
       setDeck((prev) =>
@@ -331,7 +339,7 @@ export function OBSController() {
       setConnectionMode("none")
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       showToast(isRemoteMode ? `Worker error: ${errorMsg}` : `OBS error: ${errorMsg}`, "error")
-      console.error(`[OBS] Connection failed: ${errorMsg}`)
+      console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
     }
@@ -1207,10 +1215,12 @@ export function OBSController() {
       {/* Settings Modal */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent
+          id="settings-dialog"
           className={cn(
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
+          aria-describedby="settings-description"
         >
           <DialogHeader>
             <DialogTitle>{strings.settings.title}</DialogTitle>
