@@ -5,25 +5,22 @@ interface Env {
 const HEARTBEAT_INTERVAL = 20000
 const SOCKET_TIMEOUT = 60000
 
-interface RoomState {
-  pairId: string
-  connectedAt: number
-  lastPing: number
-  isHost: boolean
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
 
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ 
-        status: "ok", 
+      return new Response(JSON.stringify({
+        status: "ok",
         timestamp: Date.now(),
-        uptime: "ready"
+        uptime: "ready",
       }), {
         headers: { "Content-Type": "application/json" },
       })
+    }
+
+    if (url.pathname === "/api/join" && request.method === "POST") {
+      return handleJoinRequest(request, env)
     }
 
     const upgradeHeader = request.headers.get("Upgrade")
@@ -49,38 +46,14 @@ export default {
       console.log(`[${pairId}] ${sessionType} connected from ${clientIp}`)
 
       let heartbeatInterval: number | null = null
-      let timeoutInterval: number | null = null
       let isConnected = true
-
-      async function broadcastToPeer(message: string) {
-        try {
-          clientSocket.send(message)
-        } catch (e) {
-          console.error(`[${pairId}] Broadcast failed:`, e)
-        }
-      }
 
       async function sendPing() {
         if (!isConnected) return
         try {
           serverSocket.send(JSON.stringify({ type: "ping", timestamp: Date.now() }))
-          console.log(`[${pairId}] Sent ping`)
         } catch (e) {
-          console.error(`[${pairId}] Ping failed:`, e)
-        }
-      }
-
-      async function checkTimeout() {
-        const roomKey = isHost ? `host:${joinCode}` : `client:${joinCode}`
-        const cached = await env.ROOMS.get(roomKey) as string | null
-        if (cached) {
-          const state: RoomState = JSON.parse(cached)
-          const now = Date.now()
-          if (now - state.lastPing > SOCKET_TIMEOUT) {
-            console.log(`[${pairId}] Socket timeout (${SOCKET_TIMEOUT}ms without activity)`)
-            isConnected = false
-            clientSocket.close()
-          }
+          console.log(`[${pairId}] Ping failed`)
         }
       }
 
@@ -89,7 +62,7 @@ export default {
 
         try {
           const data = event.data as string
-          
+
           if (data === "pong") {
             const roomKey = isHost ? `host:${joinCode}` : `client:${joinCode}`
             const cached = await env.ROOMS.get(roomKey) as string | null
@@ -98,7 +71,6 @@ export default {
               state.lastPing = Date.now()
               await env.ROOMS.put(roomKey, JSON.stringify(state))
             }
-            console.log(`[${pairId}] Received pong`)
             return
           }
 
@@ -112,9 +84,7 @@ export default {
               isHost: true,
             }))
             console.log(`[${pairId}] Host registered for code: ${joinCode}`)
-            
             heartbeatInterval = setInterval(sendPing, HEARTBEAT_INTERVAL) as unknown as number
-            timeoutInterval = setInterval(checkTimeout, 5000) as unknown as number
             return
           }
 
@@ -122,9 +92,7 @@ export default {
             const clientData = await env.ROOMS.get(`client:${joinCode}`)
             if (clientData) {
               console.log(`[${pairId}] Forwarding OBS event to client`)
-              broadcastToPeer(JSON.stringify(message))
-            } else {
-              console.log(`[${pairId}] No client connected yet, queuing event`)
+              clientSocket.send(JSON.stringify(message))
             }
             return
           }
@@ -138,11 +106,10 @@ export default {
                 lastPing: Date.now(),
                 isHost: false,
               }))
-              console.log(`[${pairId}] Client joined, notifying host`)
-              broadcastToPeer(JSON.stringify({ type: "client_joined", joinCode }))
+              console.log(`[${pairId}] Client joined`)
+              clientSocket.send(JSON.stringify({ type: "joined", joinCode }))
             } else {
-              console.log(`[${pairId}] No host found for code: ${joinCode}`)
-              broadcastToPeer(JSON.stringify({ type: "error", message: "Host not found" }))
+              clientSocket.send(JSON.stringify({ type: "error", message: "Host not found" }))
             }
             return
           }
@@ -151,13 +118,8 @@ export default {
             const hostData = await env.ROOMS.get(`host:${joinCode}`)
             if (hostData) {
               console.log(`[${pairId}] Forwarding command to host`)
-              broadcastToPeer(JSON.stringify(message))
+              clientSocket.send(JSON.stringify(message))
             }
-            return
-          }
-
-          if (!isHost && message.type === "obs_event") {
-            console.log(`[${pairId}] Ignoring obs_event from client`)
             return
           }
 
@@ -166,25 +128,18 @@ export default {
         }
       })
 
-      clientSocket.addEventListener("close", async (event) => {
-        console.log(`[${pairId}] ${sessionType} disconnected (code: ${event.code})`)
+      clientSocket.addEventListener("close", async () => {
+        console.log(`[${pairId}] ${sessionType} disconnected`)
         isConnected = false
-        
+
         if (heartbeatInterval) clearInterval(heartbeatInterval)
-        if (timeoutInterval) clearInterval(timeoutInterval)
 
         if (isHost) {
           await env.ROOMS.delete(`host:${joinCode}`)
-          console.log(`[${pairId}] Host removed, notifying clients`)
-          broadcastToPeer(JSON.stringify({ type: "host_disconnected" }))
+          clientSocket.send(JSON.stringify({ type: "host_disconnected" }))
         } else {
           await env.ROOMS.delete(`client:${joinCode}`)
-          console.log(`[${pairId}] Client removed`)
         }
-      })
-
-      clientSocket.addEventListener("error", (error) => {
-        console.error(`[${pairId}] Socket error:`, error)
       })
 
       return new Response(null, {
@@ -197,4 +152,46 @@ export default {
       return new Response("WebSocket error", { status: 500 })
     }
   },
+}
+
+async function handleJoinRequest(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = await request.json() as { userId?: string }
+    const userId = body.userId || "anonymous"
+
+    let joinCode = `${userId.substring(0, 4).toUpperCase()}-${generateRandomSuffix()}`
+
+    let attempts = 0
+    while (await env.ROOMS.get(`host:${joinCode}`) && attempts < 5) {
+      joinCode = `${userId.substring(0, 4).toUpperCase()}-${generateRandomSuffix()}`
+      attempts++
+    }
+
+    await env.ROOMS.put(`session:${joinCode}`, JSON.stringify({
+      userId,
+      createdAt: Date.now(),
+    }))
+
+    return new Response(JSON.stringify({
+      success: true,
+      joinCode,
+      expiresAt: Date.now() + 86400000,
+    }), {
+      headers: { "Content-Type": "application/json" },
+    })
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid request" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+}
+
+function generateRandomSuffix(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  let result = ""
+  for (let i = 0; i < 4; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
 }

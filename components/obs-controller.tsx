@@ -32,7 +32,8 @@ import {
 import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
 import { getStrings, Language, UIStrings, detectBrowserLanguage } from "@/lib/ui-strings"
 import { createConnectionManager, ConnectionManager, ConnectionState, ConnectionMode } from "@/lib/connection-manager"
-import { Download, Monitor, Smartphone } from "lucide-react"
+import { Download, Monitor } from "lucide-react"
+import { getWorkerUrl, generateJoinCode } from "@/lib/config"
 import {
   Mic,
   Eye,
@@ -175,6 +176,7 @@ export function OBSController() {
   const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
   const [isRemoteMode, setIsRemoteMode] = useState(false)
   const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none">("none")
+  const [autoJoinCode, setAutoJoinCode] = useState<string>("")
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none">("none")
 
@@ -259,10 +261,12 @@ export function OBSController() {
 
   const connectOBS = useCallback(async () => {
     const currentRemoteMode = isRemoteModeRef.current
-    const currentRemoteUrl = remoteUrl
-    const currentJoinCode = joinCode
+    const currentRemoteUrl = remoteUrl || getWorkerUrl()
+    const currentJoinCode = autoJoinCode || joinCode
     
-    console.log(`[OBS] connectOBS called with isRemoteMode=${currentRemoteMode}, remoteUrl="${currentRemoteUrl}", joinCode="${currentJoinCode}"`)
+    console.log(`[OBS] connectOBS called with isRemoteMode=${currentRemoteMode}`)
+    console.log(`[OBS] Using worker URL: ${currentRemoteUrl}`)
+    console.log(`[OBS] Using join code: ${currentJoinCode}`)
     
     if (obsRef.current) {
       try {
@@ -286,10 +290,10 @@ export function OBSController() {
     let finalJoinCode = currentJoinCode
 
     if (currentRemoteMode) {
-      if (!currentRemoteUrl || !currentJoinCode) {
+      if (!currentJoinCode) {
         setIsConnecting(false)
-        showToast("Remote URL and Join Code required", "error")
-        console.error(`[OBS] Remote mode enabled but missing: remoteUrl="${currentRemoteUrl}", joinCode="${currentJoinCode}"`)
+        showToast("Join Code required for remote mode", "error")
+        console.error(`[OBS] Remote mode enabled but join code is empty`)
         return
       }
       
@@ -344,16 +348,15 @@ export function OBSController() {
 
       console.log(`[OBS] Scenes loaded: ${sceneList.scenes.length}`)
       console.log(`[OBS] Inputs loaded: ${inputList.inputs.length}`)
-      console.log(`[PHASE2] Contract version: ${CONTRACT_VERSION}`)
 
       const obsAdapter = new OBSWebSocketAdapter(obs)
       setAdapter(obsAdapter)
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
-      localStorage.setItem("dfl_remote_url", remoteUrl)
-      localStorage.setItem("dfl_join_code", joinCode)
-      localStorage.setItem("dfl_remote_mode", String(isRemoteMode))
+      localStorage.setItem("dfl_remote_url", currentRemoteUrl)
+      localStorage.setItem("dfl_join_code", finalJoinCode)
+      localStorage.setItem("dfl_remote_mode", String(currentRemoteMode))
     } catch (error) {
       setConnected(false)
       setConnectionMode("none")
@@ -363,7 +366,7 @@ export function OBSController() {
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, remoteUrl, joinCode, showToast])
+  }, [wsUrl, wsPassword, remoteUrl, joinCode, autoJoinCode, showToast])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -1260,32 +1263,39 @@ export function OBSController() {
                 {strings.settings.wsUrlHint}
               </p>
             </div>
-            <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
-              <Label htmlFor="remote-url">{strings.settings.remoteUrl}</Label>
-              <Input
-                id="remote-url"
-                value={remoteUrl}
-                onChange={(e) => setRemoteUrl(e.target.value)}
-                placeholder={strings.settings.remoteUrlPlaceholder}
-                disabled={!isRemoteMode}
-                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "cursor-not-allowed")}
-              />
-              <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                {strings.settings.remoteUrlHint}
-              </p>
-            </div>
+
             <div className={cn("space-y-2", !isRemoteMode && "opacity-50")}>
               <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
-              <Input
-                id="join-code"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                placeholder={strings.settings.joinCodePlaceholder}
-                disabled={!isRemoteMode}
-                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "cursor-not-allowed")}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="join-code"
+                  value={isRemoteMode ? autoJoinCode || joinCode : joinCode}
+                  onChange={(e) => {
+                    setJoinCode(e.target.value)
+                    setAutoJoinCode("")
+                  }}
+                  placeholder={strings.settings.joinCodePlaceholder}
+                  disabled={!isRemoteMode}
+                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "cursor-not-allowed")}
+                />
+                {isRemoteMode && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const code = generateJoinCode()
+                      setAutoJoinCode(code)
+                      setJoinCode(code)
+                      console.log(`[UI] Auto-generated join code: ${code}`)
+                    }}
+                    className="shrink-0"
+                  >
+                    Generate
+                  </Button>
+                )}
+              </div>
               <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                {strings.settings.joinCodeHint}
+                {isRemoteMode ? "Share this code with clients to connect remotely" : strings.settings.joinCodeHint}
               </p>
             </div>
             <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
