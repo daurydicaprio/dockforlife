@@ -110,7 +110,7 @@ export const locales: Record<Language, LocaleStrings> = {
   en: {
     app: {
       title: 'DockForLife',
-      version: 'v0.001 BETA',
+      version: 'v1.0.0-beta',
       tagline: 'OBS Control',
     },
     header: {
@@ -215,7 +215,7 @@ export const locales: Record<Language, LocaleStrings> = {
   es: {
     app: {
       title: 'DockForLife',
-      version: 'v0.001 BETA',
+      version: 'v1.0.0-beta',
       tagline: 'Control OBS',
     },
     header: {

@@ -1,9 +1,9 @@
-const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL || 'wss://dockforlife-worker.your-user.workers.dev'
+const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL || 'wss://remote.daurydicaprio.com/ws'
 
 export const config = {
   workerUrl: WORKER_URL,
   defaultObsUrl: 'ws://127.0.0.1:4455',
-  appVersion: 'v0.001 BETA',
+  appVersion: 'v1.0.0-beta',
 }
 
 export function getWorkerUrl(): string {
