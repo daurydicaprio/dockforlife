@@ -66,6 +66,49 @@ jobs:
           path: proxy/${{ matrix.artifact }}
           retention-days: 7
 
+  prerelease:
+    needs: build
+    if: github.ref == 'refs/heads/hola' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create Pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.0.1-beta
+          release_name: DockForLife v0.0.1-beta (Pre-release)
+          body: |
+            ## Pre-release de DockForLife
+
+            Esta es una pre-release automática para pruebas.
+
+            ### Binarios incluidos:
+            - Linux AMD64
+            - Linux ARM64
+            - macOS AMD64
+            - macOS ARM64
+            - Windows AMD64
+
+            ### Uso:
+            1. Descarga el binario correspondiente a tu sistema
+            2. Ejecuta: `./dockforlife-proxy-*`
+            3. Abre https://dockforlife.app en tu navegador
+          draft: false
+          prerelease: true
+          files: release/**
+          generate_release_notes: true
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push'

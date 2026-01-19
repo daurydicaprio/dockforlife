@@ -1,0 +1,335 @@
+export type Language = 'en' | 'es'
+
+export interface LocaleStrings {
+  app: {
+    title: string
+    version: string
+    tagline: string
+  }
+  header: {
+    secure: string
+    local: string
+    remote: string
+    offline: string
+    connecting: string
+  }
+  footer: {
+    donate: string
+    madeWithLove: string
+    hashtag: string
+  }
+  settings: {
+    title: string
+    wsUrl: string
+    wsUrlPlaceholder: string
+    wsUrlHint: string
+    localMode: string
+    localModeDesc: string
+    remoteMode: string
+    remoteModeDesc: string
+    joinCode: string
+    joinCodePlaceholder: string
+    joinCodeHint: string
+    generateCode: string
+    codeGenerated: string
+    shareCode: string
+    status: {
+      connected: string
+      notConnected: string
+      connecting: string
+      error: string
+    }
+    button: string
+    connecting: string
+    password: string
+    passwordPlaceholder: string
+    language: string
+    languageEn: string
+    languageEs: string
+    desktopAgent: string
+    desktopAgentDesc: string
+    download: string
+    downloadFor: string
+    agentNote: string
+  }
+    toasts: {
+      connected: string
+      connectionError: string
+      saved: string
+      deleted: string
+      orderUpdated: string
+      codeGenerated: string
+      codeExpired: string
+      langChanged: string
+      agentNotRunning: string
+      searchingAgent: string
+    }
+    agent: {
+      title: string
+      desc: string
+      download: string
+      downloadLinux: string
+      downloadMac: string
+      downloadWindows: string
+      note: string
+    }
+    dialogs: {
+    deleteTitle: string
+    deleteDesc: string
+    cancel: string
+    delete: string
+  }
+  onboarding: {
+    title: string
+    subtitle: string
+    requirements: string
+    req1Title: string
+    req1Desc: string
+    req2Title: string
+    req2Desc: string
+    req3Title: string
+    req3Desc: string
+    setupButton: string
+    gotIt: string
+  }
+  security: {
+    title: string
+    localData: string
+    localDataDesc: string
+    noDataCollection: string
+    noDataCollectionDesc: string
+    directConnection: string
+    directConnectionDesc: string
+    offlineMode: string
+    offlineModeDesc: string
+    ok: string
+  }
+}
+
+export const locales: Record<Language, LocaleStrings> = {
+  en: {
+    app: {
+      title: 'DockForLife',
+      version: 'v0.001 BETA',
+      tagline: 'OBS Control',
+    },
+    header: {
+      secure: 'Secure',
+      local: 'LOCAL',
+      remote: 'REMOTE',
+      offline: 'OFFLINE',
+      connecting: 'CONNECTING',
+    },
+    footer: {
+      donate: 'Donate',
+      madeWithLove: 'Made with love by',
+      hashtag: '#verygoodforlife',
+    },
+    settings: {
+      title: 'OBS Connection',
+      wsUrl: 'Local WebSocket URL',
+      wsUrlPlaceholder: 'ws://127.0.0.1:4455',
+      wsUrlHint: 'Default: ws://127.0.0.1:4455',
+      localMode: 'Local Mode',
+      localModeDesc: 'Connect directly to OBS on this device',
+      remoteMode: 'Remote Mode',
+      remoteModeDesc: 'Generate a code to control OBS from another device',
+      joinCode: 'Control Code',
+      joinCodePlaceholder: 'Enter 8-character code',
+      joinCodeHint: 'Share this code with another device',
+      generateCode: 'Generate Remote Code',
+      codeGenerated: 'Code generated! Share it with your mobile device',
+      shareCode: 'Share this code:',
+      status: {
+        connected: 'Connected to OBS',
+        notConnected: 'Not connected',
+        connecting: 'Connecting...',
+        error: 'Connection error',
+      },
+      button: 'Connect',
+      connecting: 'Connecting...',
+      password: 'Password (optional)',
+      passwordPlaceholder: 'OBS WebSocket password',
+      language: 'Language',
+      languageEn: 'English',
+      languageEs: 'Español',
+      desktopAgent: 'Desktop Agent',
+      desktopAgentDesc: 'Download for permanent remote access',
+      download: 'Download',
+      downloadFor: 'Download for',
+      agentNote: 'Small executable (~7MB). No installation required.',
+    },
+    toasts: {
+      connected: 'Connected to OBS',
+      connectionError: 'Failed to connect',
+      saved: 'Button saved',
+      deleted: 'Button deleted',
+      orderUpdated: 'Order updated',
+      codeGenerated: 'Remote code generated successfully',
+      codeExpired: 'Code has expired. Please generate a new one.',
+      langChanged: 'Language changed',
+      agentNotRunning: 'Agent not running on this network',
+      searchingAgent: 'Searching for local agent...',
+    },
+    agent: {
+      title: 'Local Agent Required',
+      desc: 'To connect remotely, you need the DockForLife agent running on your network.',
+      download: 'Download Agent',
+      downloadLinux: 'Download for Linux',
+      downloadMac: 'Download for macOS',
+      downloadWindows: 'Download for Windows',
+      note: 'Small executable (~7MB). No installation required.',
+    },
+    dialogs: {
+      deleteTitle: 'Delete button?',
+      deleteDesc: 'This action cannot be undone.',
+      cancel: 'Cancel',
+      delete: 'Delete',
+    },
+    onboarding: {
+      title: 'Welcome to DockForLife',
+      subtitle: 'Control OBS from any device on your local network',
+      requirements: 'Requirements:',
+      req1Title: 'OBS Studio running',
+      req1Desc: 'Make sure OBS is running',
+      req2Title: 'WebSocket Server active',
+      req2Desc: 'In OBS: Tools > WebSocket Server Settings',
+      req3Title: 'Port 4455 (default)',
+      req3Desc: 'You can change it in settings',
+      setupButton: 'Setup Connection',
+      gotIt: 'Got it',
+    },
+    security: {
+      title: 'Security & Privacy',
+      localData: '100% Local',
+      localDataDesc: 'All data stored locally on your device.',
+      noDataCollection: 'No data collection',
+      noDataCollectionDesc: 'We do not collect any personal information.',
+      directConnection: 'Direct connection',
+      directConnectionDesc: 'Connects directly to OBS on your network.',
+      offlineMode: 'Works offline',
+      offlineModeDesc: 'App works without internet once loaded.',
+      ok: 'Got it',
+    },
+  },
+  es: {
+    app: {
+      title: 'DockForLife',
+      version: 'v0.001 BETA',
+      tagline: 'Control OBS',
+    },
+    header: {
+      secure: 'Seguro',
+      local: 'LOCAL',
+      remote: 'REMOTO',
+      offline: 'DESCONECTADO',
+      connecting: 'CONECTANDO',
+    },
+    footer: {
+      donate: 'Donar',
+      madeWithLove: 'Hecho con amor por',
+      hashtag: '#verygoodforlife',
+    },
+    settings: {
+      title: 'Conexión OBS',
+      wsUrl: 'URL WebSocket Local',
+      wsUrlPlaceholder: 'ws://127.0.0.1:4455',
+      wsUrlHint: 'Por defecto: ws://127.0.0.1:4455',
+      localMode: 'Modo Local',
+      localModeDesc: 'Conectar directamente a OBS en este dispositivo',
+      remoteMode: 'Modo Remoto',
+      remoteModeDesc: 'Generar un código para controlar OBS desde otro dispositivo',
+      joinCode: 'Código de Control',
+      joinCodePlaceholder: 'Ingresa código de 8 caracteres',
+      joinCodeHint: 'Comparte este código con otro dispositivo',
+      generateCode: 'Generar Código Remoto',
+      codeGenerated: '¡Código generado! Compártelo con tu móvil',
+      shareCode: 'Comparte este código:',
+      status: {
+        connected: 'Conectado a OBS',
+        notConnected: 'No conectado',
+        connecting: 'Conectando...',
+        error: 'Error de conexión',
+      },
+      button: 'Conectar',
+      connecting: 'Conectando...',
+      password: 'Contraseña (opcional)',
+      passwordPlaceholder: 'Contraseña de WebSocket OBS',
+      language: 'Idioma',
+      languageEn: 'English',
+      languageEs: 'Español',
+      desktopAgent: 'Agente de Escritorio',
+      desktopAgentDesc: 'Descarga para acceso remoto permanente',
+      download: 'Descargar',
+      downloadFor: 'Descargar para',
+      agentNote: 'Ejecutable pequeño (~7MB). No requiere instalación.',
+    },
+    toasts: {
+      connected: 'Conectado a OBS',
+      connectionError: 'Error al conectar',
+      saved: 'Botón guardado',
+      deleted: 'Botón eliminado',
+      orderUpdated: 'Orden actualizado',
+      codeGenerated: 'Código remoto generado correctamente',
+      codeExpired: 'El código ha expirado. Genera uno nuevo.',
+      langChanged: 'Idioma cambiado',
+      agentNotRunning: 'Agente no disponible en esta red',
+      searchingAgent: 'Buscando agente local...',
+    },
+    agent: {
+      title: 'Se Requiere Agente Local',
+      desc: 'Para conectar remotamente, necesitas el agente de DockForLife corriendo en tu red.',
+      download: 'Descargar Agente',
+      downloadLinux: 'Descargar para Linux',
+      downloadMac: 'Descargar para macOS',
+      downloadWindows: 'Descargar para Windows',
+      note: 'Ejecutable pequeño (~7MB). No requiere instalación.',
+    },
+    dialogs: {
+      deleteTitle: '¿Eliminar botón?',
+      deleteDesc: 'Esta acción no se puede deshacer.',
+      cancel: 'Cancelar',
+      delete: 'Eliminar',
+    },
+    onboarding: {
+      title: 'Bienvenido a DockForLife',
+      subtitle: 'Controla OBS desde cualquier dispositivo en tu red',
+      requirements: 'Requisitos:',
+      req1Title: 'OBS Studio abierto',
+      req1Desc: 'Asegúrate de tener OBS ejecutándose',
+      req2Title: 'WebSocket Server activo',
+      req2Desc: 'En OBS: Herramientas > WebSocket Server Settings',
+      req3Title: 'Puerto 4455 (por defecto)',
+      req3Desc: 'Puedes cambiarlo en configuración',
+      setupButton: 'Configurar conexión',
+      gotIt: 'Entendido',
+    },
+    security: {
+      title: 'Seguridad y Privacidad',
+      localData: '100% Local',
+      localDataDesc: 'Todos los datos se almacenan localmente.',
+      noDataCollection: 'Sin recolección de datos',
+      noDataCollectionDesc: 'No recopilamos información personal.',
+      directConnection: 'Conexión directa',
+      directConnectionDesc: 'Conecta directamente a OBS en tu red.',
+      offlineMode: 'Funciona offline',
+      offlineModeDesc: 'La app funciona sin internet una vez cargada.',
+      ok: 'Entendido',
+    },
+  },
+}
+
+export function detectBrowserLanguage(): Language {
+  if (typeof window === 'undefined') return 'en'
+  
+  const browserLang = navigator.language?.toLowerCase() || ''
+  
+  if (browserLang.startsWith('es')) {
+    return 'es'
+  }
+  return 'en'
+}
+
+export function getLocaleStrings(lang: Language): LocaleStrings {
+  return locales[lang]
+}
