@@ -30,10 +30,10 @@ import {
   commandToString,
 } from "@/lib/obs-validator"
 import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
-import { getStrings, Language, UIStrings, detectBrowserLanguage } from "@/lib/ui-strings"
+import { getLocaleStrings, LocaleStrings, detectBrowserLanguage, Language } from "@/lib/locales"
 import { createConnectionManager, ConnectionManager, ConnectionState, ConnectionMode } from "@/lib/connection-manager"
 import { Download, Monitor } from "lucide-react"
-import { getWorkerUrl, generateJoinCode } from "@/lib/config"
+import { getWorkerUrl, generateJoinCode, getGitHubReleaseUrl } from "@/lib/config"
 import {
   Mic,
   Eye,
@@ -138,7 +138,7 @@ export function OBSController() {
   const [deck, setDeck] = useState<DeckButton[]>([])
   const [connected, setConnected] = useState(false)
   const [lang, setLang] = useState<Language>("en")
-  const [strings, setStrings] = useState<UIStrings>(getStrings("en"))
+  const [strings, setStrings] = useState<LocaleStrings>(getLocaleStrings("en"))
   const [obsData, setObsData] = useState<OBSData>({
     scenes: [],
     inputs: [],
@@ -177,6 +177,7 @@ export function OBSController() {
   const [isRemoteMode, setIsRemoteMode] = useState(false)
   const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none">("none")
   const [autoJoinCode, setAutoJoinCode] = useState<string>("")
+  const [isMobile, setIsMobile] = useState(false)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none">("none")
 
@@ -215,15 +216,18 @@ export function OBSController() {
     const savedLang = localStorage.getItem("dfl_lang") as Language | null
     if (savedLang && (savedLang === "en" || savedLang === "es")) {
       setLang(savedLang)
-      setStrings(getStrings(savedLang))
+      setStrings(getLocaleStrings(savedLang))
     } else {
       const detectedLang = detectBrowserLanguage()
       setLang(detectedLang)
-      setStrings(getStrings(detectedLang))
+      setStrings(getLocaleStrings(detectedLang))
       localStorage.setItem("dfl_lang", detectedLang)
     }
 
     const platform = navigator.platform.toLowerCase()
+    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent)
+    setIsMobile(isMobileDevice)
+    
     if (platform.includes("win")) {
       setUserOS("windows")
     } else if (platform.includes("mac") || platform.includes("darwin")) {
@@ -289,13 +293,13 @@ export function OBSController() {
     let targetUrl = wsUrl
     let finalJoinCode = currentJoinCode
 
-    if (currentRemoteMode) {
-      if (!currentJoinCode) {
-        setIsConnecting(false)
-        showToast("Join Code required for remote mode", "error")
-        console.error(`[OBS] Remote mode enabled but join code is empty`)
-        return
-      }
+      if (currentRemoteMode) {
+        if (!currentJoinCode) {
+          setIsConnecting(false)
+          showToast(strings.toasts.codeExpired, "error")
+          console.error(`[OBS] Remote mode enabled but join code is empty`)
+          return
+        }
       
       targetUrl = currentRemoteUrl.startsWith("wss://") ? currentRemoteUrl : `wss://${currentRemoteUrl}`
       finalJoinCode = currentJoinCode.trim()
@@ -312,7 +316,7 @@ export function OBSController() {
       await obs.connect(targetUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
       setConnectionMode(currentRemoteMode ? "remote" : "local")
-      showToast(currentRemoteMode ? "Connected via Cloudflare" : "Connected to OBS", "success")
+      showToast(strings.toasts.connected, "success")
       console.log(`[OBS] Connected successfully (${currentRemoteMode ? "remote" : "local"}) to ${targetUrl}`)
 
       const special = await obs.call("GetSpecialInputs")
@@ -361,7 +365,7 @@ export function OBSController() {
       setConnected(false)
       setConnectionMode("none")
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
-      showToast(currentRemoteMode ? `Worker error: ${errorMsg}` : `OBS error: ${errorMsg}`, "error")
+      showToast(strings.toasts.connectionError, "error")
       console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
@@ -415,7 +419,7 @@ export function OBSController() {
   const execute = useCallback(
     async (btn: DeckButton) => {
       if (!obsRef.current || !connected) {
-        showToast("No conectado a OBS", "error")
+        showToast(strings.toasts.connectionError, "error")
         return
       }
 
@@ -483,7 +487,7 @@ export function OBSController() {
                   sceneItemEnabled: !sceneItemEnabled,
                 })
               } else {
-                showToast(`"${btn.target}" no encontrado`, "error")
+                showToast(strings.toasts.connectionError, "error")
               }
             } else {
               console.warn("[EXECUTE] Empty target for Visibility action")
@@ -497,7 +501,7 @@ export function OBSController() {
           filter: btn.filter,
           error: error instanceof Error ? error.message : String(error),
         })
-        showToast("Accion fallida", "error")
+        showToast(strings.toasts.connectionError, "error")
       }
     },
     [connected, showToast],
@@ -506,7 +510,7 @@ export function OBSController() {
   const executeContract = useCallback(
     async (btn: DeckButton): Promise<boolean> => {
       if (!obsRef.current || !connected) {
-        showToast("No conectado a OBS", "error")
+        showToast(strings.toasts.connectionError, "error")
         return false
       }
 
@@ -540,7 +544,7 @@ export function OBSController() {
 
       if (!result.success) {
         console.error(`[PHASE2] Command failed: ${result.error}`)
-        showToast("Accion fallida", "error")
+        showToast(strings.toasts.connectionError, "error")
         return false
       }
 
@@ -602,7 +606,7 @@ export function OBSController() {
     })
 
     setModalOpen(false)
-    showToast("Boton guardado", "success")
+    showToast(strings.toasts.saved, "success")
   }
 
   const deleteButton = () => {
@@ -610,7 +614,7 @@ export function OBSController() {
     setDeck((prev) => prev.filter((_, i) => i !== currentIdx))
     setModalOpen(false)
     setDeleteDialogOpen(false)
-    showToast("Boton eliminado", "success")
+    showToast(strings.toasts.deleted, "success")
   }
 
   const handleLongPressStart = (index: number) => {
@@ -656,7 +660,7 @@ export function OBSController() {
     setDeck(newDeck)
     setDraggedIdx(null)
     setDragOverIdx(null)
-    showToast("Orden actualizado", "success")
+    showToast(strings.toasts.orderUpdated, "success")
   }
 
   const handleDragEnd = () => {
@@ -868,7 +872,7 @@ export function OBSController() {
         )}
       >
         <div className="container max-w-screen-xl flex flex-col items-center gap-3">
-          <Logo className="h-8 w-8 opacity-30" />
+          <Logo className="h-10 w-10 opacity-30" />
 
           {/* Donate button */}
           <a
@@ -1257,7 +1261,7 @@ export function OBSController() {
                 onChange={(e) => setWsUrl(e.target.value)}
                 placeholder={strings.settings.wsUrlPlaceholder}
                 disabled={isRemoteMode}
-                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "cursor-not-allowed")}
+                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
               />
               <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
                 {strings.settings.wsUrlHint}
@@ -1276,7 +1280,7 @@ export function OBSController() {
                   }}
                   placeholder={strings.settings.joinCodePlaceholder}
                   disabled={!isRemoteMode}
-                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "cursor-not-allowed")}
+                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "opacity-50 cursor-not-allowed")}
                 />
                 {isRemoteMode && (
                   <Button
@@ -1286,17 +1290,24 @@ export function OBSController() {
                       const code = generateJoinCode()
                       setAutoJoinCode(code)
                       setJoinCode(code)
+                      navigator.clipboard.writeText(code)
+                      showToast(strings.toasts.codeGenerated, "success")
                       console.log(`[UI] Auto-generated join code: ${code}`)
                     }}
                     className="shrink-0"
                   >
-                    Generate
+                    {strings.settings.generateCode}
                   </Button>
                 )}
               </div>
-              <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                {isRemoteMode ? "Share this code with clients to connect remotely" : strings.settings.joinCodeHint}
-              </p>
+              {isRemoteMode && autoJoinCode && (
+                <div className={cn("p-3 rounded-lg text-center font-mono text-lg tracking-wider", isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-50 text-blue-600")}>
+                  {autoJoinCode}
+                </div>
+              )}
+                <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                  {isRemoteMode ? strings.settings.shareCode : strings.settings.joinCodeHint}
+                </p>
             </div>
             <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
               <Label htmlFor="ws-pass">{strings.settings.password}</Label>
@@ -1307,7 +1318,7 @@ export function OBSController() {
                 onChange={(e) => setWsPassword(e.target.value)}
                 placeholder={strings.settings.passwordPlaceholder}
                 disabled={isRemoteMode}
-                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "cursor-not-allowed")}
+                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
               />
             </div>
 
@@ -1338,10 +1349,10 @@ export function OBSController() {
                 </div>
                 <div>
                   <Label htmlFor="remote-mode" className="cursor-pointer">
-                    Remote Mode
+                    {strings.settings.remoteMode}
                   </Label>
                   <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    {isRemoteMode ? "Using Cloudflare Worker" : "Use local OBS connection"}
+                    {isRemoteMode ? strings.settings.remoteModeDesc : strings.settings.localModeDesc}
                   </p>
                 </div>
               </div>
@@ -1386,7 +1397,7 @@ export function OBSController() {
                 value={lang}
                 onValueChange={(value: Language) => {
                   setLang(value)
-                  setStrings(getStrings(value))
+                  setStrings(getLocaleStrings(value))
                   localStorage.setItem("dfl_lang", value)
                   showToast(strings.toasts.langChanged, "success")
                 }}
@@ -1423,80 +1434,21 @@ export function OBSController() {
                 {strings.settings.desktopAgentDesc}
               </p>
               <div className="space-y-2">
-                {userOS === "windows" && (
-                  <a
-                    href="/downloads/bin/win/agent.exe"
-                    download
-                    className={cn(
-                      "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
-                      isDark
-                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                        : "bg-blue-100 text-blue-600 hover:bg-blue-200",
-                    )}
-                  >
-                    <Download className="h-4 w-4" />
-                    {strings.settings.downloadFor} Windows
-                  </a>
-                )}
-                {userOS === "macos" && (
-                  <a
-                    href="/downloads/bin/macos/agent"
-                    download
-                    className={cn(
-                      "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
-                      isDark
-                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                        : "bg-blue-100 text-blue-600 hover:bg-blue-200",
-                    )}
-                  >
-                    <Download className="h-4 w-4" />
-                    {strings.settings.downloadFor} macOS
-                  </a>
-                )}
-                {userOS === "linux" && (
-                  <a
-                    href="/downloads/bin/linux/agent"
-                    download
-                    className={cn(
-                      "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
-                      isDark
-                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                        : "bg-blue-100 text-blue-600 hover:bg-blue-200",
-                    )}
-                  >
-                    <Download className="h-4 w-4" />
-                    {strings.settings.downloadFor} Linux
-                  </a>
-                )}
-                {userOS === "other" && (
-                  <div className="flex gap-2">
-                    <a
-                      href="/downloads/bin/win/agent.exe"
-                      download
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium",
-                        isDark
-                          ? "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
-                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300",
-                      )}
-                    >
-                      Windows
-                    </a>
-                    <a
-                      href="/downloads/bin/linux/agent"
-                      download
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium",
-                        isDark
-                          ? "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
-                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300",
-                      )}
-                    >
-                      Linux
-                    </a>
-                  </div>
-                )}
-                <p className={cn("text-[10px] text-center", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                <a
+                  href={getGitHubReleaseUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
+                    isDark
+                      ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                      : "bg-blue-100 text-blue-600 hover:bg-blue-200",
+                  )}
+                >
+                  <Download className="h-4 w-4" />
+                  {strings.settings.download}
+                </a>
+                <p className={cn("text-xs text-center", isDark ? "text-zinc-500" : "text-zinc-400")}>
                   {strings.settings.agentNote}
                 </p>
               </div>

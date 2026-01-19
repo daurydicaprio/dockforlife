@@ -42,11 +42,24 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              (function() {
+                var lang = 'en';
+                try {
+                  var saved = localStorage.getItem('dfl_lang');
+                  if (saved === 'es' || saved === 'en') {
+                    lang = saved;
+                  } else {
+                    var browser = navigator.language?.toLowerCase() || '';
+                    if (browser.startsWith('es')) lang = 'es';
+                  }
+                } catch (e) {}
+                document.documentElement.lang = lang;
+              })();
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
                   navigator.serviceWorker.register('/sw.js');
