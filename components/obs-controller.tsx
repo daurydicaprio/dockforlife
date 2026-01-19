@@ -175,11 +175,13 @@ export function OBSController() {
   const [adapter, setAdapter] = useState<OBSWebSocketAdapter | null>(null)
   const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
   const [isRemoteMode, setIsRemoteMode] = useState(false)
-  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none">("none")
+  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none" | "dual">("none")
   const [autoJoinCode, setAutoJoinCode] = useState<string>("")
   const [isMobile, setIsMobile] = useState(false)
+  const [remoteConnectionFailed, setRemoteConnectionFailed] = useState(false)
+  const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
-  const connectionModeRef = useRef<"local" | "remote" | "none">("none")
+  const connectionModeRef = useRef<"local" | "remote" | "none" | "dual">("none")
 
   useEffect(() => {
     isRemoteModeRef.current = isRemoteMode
@@ -263,6 +265,14 @@ export function OBSController() {
     setTimeout(() => setToast(null), 2000)
   }, [])
 
+  const startRemoteTimeout = useCallback(() => {
+    if (remoteTimeoutRef.current) clearTimeout(remoteTimeoutRef.current)
+    remoteTimeoutRef.current = setTimeout(() => {
+      setRemoteConnectionFailed(true)
+      console.log(`[OBS] Remote connection timeout - showing help banner`)
+    }, 5000)
+  }, [])
+
   const connectOBS = useCallback(async () => {
     const currentRemoteMode = isRemoteModeRef.current
     const currentRemoteUrl = remoteUrl || getWorkerUrl()
@@ -272,7 +282,7 @@ export function OBSController() {
     console.log(`[OBS] Using worker URL: ${currentRemoteUrl}`)
     console.log(`[OBS] Using join code: ${currentJoinCode}`)
     
-    if (obsRef.current) {
+    if (obsRef.current && !connected) {
       try {
         console.log(`[OBS] Disconnecting previous socket...`)
         await obsRef.current.disconnect()
@@ -284,8 +294,16 @@ export function OBSController() {
       }
     }
 
+    if (currentRemoteMode && connected && connectionMode === "local") {
+      console.log(`[OBS] Maintaining local OBS connection while switching to remote mode`)
+      setConnectionMode("dual")
+      startRemoteTimeout()
+      return
+    }
+
     setIsConnecting(true)
     setConnectionMode("none")
+    setRemoteConnectionFailed(false)
 
     const obs = new OBSWebSocket()
     obsRef.current = obs
@@ -293,14 +311,14 @@ export function OBSController() {
     let targetUrl = wsUrl
     let finalJoinCode = currentJoinCode
 
-      if (currentRemoteMode) {
-        if (!currentJoinCode) {
-          setIsConnecting(false)
-          showToast(strings.toasts.codeExpired, "error")
-          console.error(`[OBS] Remote mode enabled but join code is empty`)
-          return
-        }
-      
+    if (currentRemoteMode) {
+      if (!currentJoinCode) {
+        setIsConnecting(false)
+        showToast(strings.toasts.codeExpired, "error")
+        console.error(`[OBS] Remote mode enabled but join code is empty`)
+        return
+      }
+    
       targetUrl = currentRemoteUrl.startsWith("wss://") ? currentRemoteUrl : `wss://${currentRemoteUrl}`
       finalJoinCode = currentJoinCode.trim()
       
@@ -362,15 +380,20 @@ export function OBSController() {
       localStorage.setItem("dfl_join_code", finalJoinCode)
       localStorage.setItem("dfl_remote_mode", String(currentRemoteMode))
     } catch (error) {
-      setConnected(false)
-      setConnectionMode("none")
-      const errorMsg = error instanceof Error ? error.message : "Unknown error"
-      showToast(strings.toasts.connectionError, "error")
-      console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
+      if (currentRemoteMode) {
+        setRemoteConnectionFailed(true)
+        console.log(`[OBS] Remote connection failed, local connection maintained`)
+      } else {
+        setConnected(false)
+        setConnectionMode("none")
+        const errorMsg = error instanceof Error ? error.message : "Unknown error"
+        showToast(strings.toasts.connectionError, "error")
+        console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
+      }
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, remoteUrl, joinCode, autoJoinCode, showToast])
+  }, [wsUrl, wsPassword, remoteUrl, joinCode, autoJoinCode, showToast, connected, connectionMode])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -772,6 +795,20 @@ export function OBSController() {
           </div>
         </header>
 
+        {remoteConnectionFailed && (
+          <div className={cn("px-4 py-3 text-center text-sm", isDark ? "bg-amber-500/10 text-amber-400" : "bg-amber-50 text-amber-700")}>
+            <span>{strings.toasts.agentNotRunning}</span>
+            <a
+              href={getGitHubReleaseUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn("ml-2 underline font-medium", isDark ? "text-amber-300" : "text-amber-600")}
+            >
+              {strings.agent.download}
+            </a>
+          </div>
+        )}
+
         {/* Main Grid */}
         <main className="flex-1 container max-w-screen-xl mx-auto px-3 py-4 sm:px-4 sm:py-6">
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3">
@@ -910,7 +947,7 @@ export function OBSController() {
             </p>
           </div>
 
-          <p className={cn("text-[10px]", isDark ? "text-zinc-700" : "text-zinc-400")}>v0.001 BETA</p>
+          <p className={cn("text-[10px]", isDark ? "text-zinc-700" : "text-zinc-400")}>v1.0.0-beta</p>
         </div>
       </footer>
       </div>

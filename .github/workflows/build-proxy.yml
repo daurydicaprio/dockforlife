@@ -25,22 +25,27 @@ jobs:
             artifact: dockforlife-proxy-linux-amd64
             goos: linux
             goarch: amd64
+            upload: true
           - os: ubuntu-latest
             artifact: dockforlife-proxy-linux-arm64
             goos: linux
             goarch: arm64
+            upload: false
           - os: macos-latest
             artifact: dockforlife-proxy-darwin-amd64
             goos: darwin
             goarch: amd64
+            upload: false
           - os: macos-latest
             artifact: dockforlife-proxy-darwin-arm64
             goos: darwin
             goarch: arm64
+            upload: false
           - os: windows-latest
             artifact: dockforlife-proxy-windows-amd64.exe
             goos: windows
             goarch: amd64
+            upload: true
 
     steps:
       - name: Checkout code
@@ -60,6 +65,7 @@ jobs:
             go build -o ${{ matrix.artifact }} .
 
       - name: Upload artifact
+        if: matrix.upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -86,28 +92,35 @@ jobs:
       - name: Create Pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.0.1-beta
-          release_name: DockForLife v0.0.1-beta (Pre-release)
+          tag_name: v1.0.0-beta
+          release_name: DockForLife v1.0.0-beta
           body: |
-            ## Pre-release de DockForLife
+            ## DockForLife v1.0.0-beta
 
-            Esta es una pre-release automática para pruebas.
+            Professional OBS remote control with Zero Configuration.
 
-            ### Binarios incluidos:
-            - Linux AMD64
-            - Linux ARM64
-            - macOS AMD64
-            - macOS ARM64
-            - Windows AMD64
+            ### Downloads
+            - **Windows:** `dockforlife-proxy-windows-amd64.exe`
+            - **Linux:** `dockforlife-proxy-linux-amd64`
 
-            ### Uso:
-            1. Descarga el binario correspondiente a tu sistema
-            2. Ejecuta: `./dockforlife-proxy-*`
-            3. Abre https://dockforlife.app en tu navegador
+            ### Features
+            - Magic Handshake: Automatic Join Code generation
+            - Dual-mode: Local + Remote connection persistence
+            - Bilingual: English/Spanish auto-detection
+            - Zero Config: Fixed worker URL, no manual setup
+
+            ### Usage
+            1. Download the binary for your platform
+            2. Run: `./dockforlife-proxy-linux-amd64` (Linux) or double-click (Windows)
+            3. Open https://dockforlife.app in your browser
+            4. Generate a Join Code and connect from any device
+
+            ### Source
+            Source code available at: https://github.com/daurydicaprio/dockforlife
           draft: false
           prerelease: true
           files: release/**
-          generate_release_notes: true
+          generate_release_notes: false
 
   release:
     needs: build
@@ -124,9 +137,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release
+          merge-multiple: true
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          release_name: DockForLife ${{ github.ref_name }}
+          body: |
+            ## DockForLife ${{ github.ref_name }}
+
+            Professional OBS remote control.
+
+            ### Downloads
+            - **Windows:** `dockforlife-proxy-windows-amd64.exe`
+            - **Linux:** `dockforlife-proxy-linux-amd64`
+
+            Full release notes: https://github.com/daurydicaprio/dockforlife/releases
+          draft: false
+          prerelease: false
           files: release/**
-          generate_release_notes: true
+          generate_release_notes: false
