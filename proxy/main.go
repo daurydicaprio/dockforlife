@@ -100,11 +100,6 @@ func (a *Agent) connectOBS() error {
 
 	fmt.Printf("[OBS] Connected to %s\n", u.String())
 
-	helloMsg := OBSMessage{Op: 1, D: json.RawMessage(`{"rpcVersion":1}`)}
-	if err := conn.WriteJSON(helloMsg); err != nil {
-		return fmt.Errorf("failed to send Hello: %w", err)
-	}
-
 	return nil
 }
 
@@ -195,10 +190,26 @@ func (a *Agent) handleOBSMessages() {
 
 			var msg OBSMessage
 			if err := json.Unmarshal(message, &msg); err != nil {
+				fmt.Printf("[OBS] Parse error: %v\n", err)
 				continue
 			}
 
 			switch msg.Op {
+			case 0:
+				fmt.Printf("[OBS] Hello received, sending Identify...\n")
+				identifyMsg := OBSMessage{
+					Op: 1,
+					D:  json.RawMessage(`{"rpcVersion":1,"authentication":"","eventSubscriptions":1}`),
+				}
+				a.mu.Lock()
+				conn := a.obsConn
+				a.mu.Unlock()
+				if conn != nil {
+					conn.WriteJSON(identifyMsg)
+					fmt.Printf("[OBS] Identify sent\n")
+				}
+			case 2:
+				fmt.Printf("[OBS] Identified successfully\n")
 			case 5:
 				fmt.Printf("[OBS] Event received\n")
 				a.mu.Lock()
@@ -340,16 +351,28 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 
 	requestId := fmt.Sprintf("req_%d", time.Now().UnixNano())
 
-	request := OBSMessage{
-		Op:   6,
-		Type: requestType,
-		Id:   requestId,
+	requestData := map[string]interface{}{
+		"requestType": requestType,
+		"requestId":   requestId,
 	}
 
-	fmt.Printf("[OBS] Calling %s (id: %s)\n", requestType, requestId)
+	requestDataJSON, _ := json.Marshal(requestData)
+	fmt.Printf("[OBS] Calling %s with payload: %s\n", requestType, string(requestDataJSON))
 
-	if err := obs.WriteJSON(request); err != nil {
-		return nil, fmt.Errorf("failed to send: %w", err)
+	request := OBSMessage{
+		Op: 6,
+		D:  requestDataJSON,
+	}
+
+	requestJSON, _ := json.Marshal(request)
+	fmt.Printf("[OBS] Full request: %s\n", string(requestJSON))
+
+	a.mu.Lock()
+	err := obs.WriteJSON(request)
+	a.mu.Unlock()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	timeout := time.After(2 * time.Second)
@@ -375,6 +398,7 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 
 			var resp OBSMessage
 			if err := json.Unmarshal(msg, &resp); err != nil {
+				fmt.Printf("[OBS] Parse response error: %v\n", err)
 				continue
 			}
 
@@ -383,6 +407,7 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 
 				var respData map[string]interface{}
 				json.Unmarshal(resp.D, &respData)
+				fmt.Printf("[OBS] Response data: %s\n", string(resp.D))
 
 				switch requestType {
 				case "GetSceneList":
@@ -422,7 +447,7 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 		}
 		return result, nil
 	case <-timeout:
-		return nil, fmt.Errorf("timeout")
+		return nil, fmt.Errorf("timeout waiting for %s", requestType)
 	}
 }
 
@@ -437,20 +462,33 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 
 	obsMethod := a.mapToOBSMethod(method)
 
-	request := OBSMessage{
-		Op:   6,
-		Type: obsMethod,
-		Id:   fmt.Sprintf("cmd_%d", time.Now().UnixNano()),
+	requestData := map[string]interface{}{
+		"requestType": obsMethod,
+		"requestId":   fmt.Sprintf("cmd_%d", time.Now().UnixNano()),
 	}
 
 	if params != nil {
-		data, _ := json.Marshal(params)
-		request.Data = data
+		for k, v := range params {
+			requestData[k] = v
+		}
 	}
 
-	fmt.Printf("[OBS] Command: %s\n", obsMethod)
+	requestDataJSON, _ := json.Marshal(requestData)
+	fmt.Printf("[OBS] Command %s with payload: %s\n", obsMethod, string(requestDataJSON))
 
-	return obs.WriteJSON(request)
+	request := OBSMessage{
+		Op: 6,
+		D:  requestDataJSON,
+	}
+
+	requestJSON, _ := json.Marshal(request)
+	fmt.Printf("[OBS] Full command: %s\n", string(requestJSON))
+
+	a.mu.Lock()
+	err := obs.WriteJSON(request)
+	a.mu.Unlock()
+
+	return err
 }
 
 func (a *Agent) mapToOBSMethod(webMethod string) string {
@@ -486,10 +524,9 @@ func (a *Agent) handleShutdown() {
 func generateJoinCode() string {
 	chars := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	result := ""
-	rand := time.Now().UnixNano()
 	for i := 0; i < 8; i++ {
-		result += string(chars[rand%int64(len(chars))])
-		rand = (rand*1103515245 + 12345) & 0x7fffffff
+		result += string(chars[time.Now().UnixNano()%int64(len(chars))])
+		time.Sleep(1 * time.Millisecond)
 	}
 	return result
 }
