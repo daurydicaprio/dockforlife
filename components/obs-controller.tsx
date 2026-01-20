@@ -445,10 +445,12 @@ export function OBSController() {
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
-    if (savedUrl && !isRemoteMode) {
+    const savedRemoteMode = localStorage.getItem("dfl_remote_mode")
+    
+    if (savedUrl && savedRemoteMode !== "true") {
       connectOBS()
     }
-  }, [isRemoteMode])
+  }, [])
 
   // Sync states periodically
   useEffect(() => {
@@ -755,26 +757,19 @@ export function OBSController() {
   return (
     <div
       className={cn(
-        "min-h-screen flex flex-col transition-colors duration-300 max-w-4xl mx-auto w-full",
+        "min-h-screen flex flex-col transition-colors duration-300 max-w-md mx-auto w-full mt-10",
         isDark ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900",
       )}
     >
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <header
-          className={cn(
-            "sticky top-0 z-40 backdrop-blur-xl",
-            isDark ? "bg-zinc-950/80" : "bg-zinc-50/80",
-          )}
-        >
-          <div className="container flex h-16 max-w-screen-xl mx-auto items-center justify-between px-4">
+        <header className={cn("sticky top-0 z-40 backdrop-blur-xl", isDark ? "bg-zinc-950/80" : "bg-zinc-50/80")}>
+          <div className="flex h-14 items-center justify-between px-4">
             <div className="flex items-center gap-3">
-              <Logo className="h-10 w-10" />
-              <div className="flex flex-col">
-                <h1 className="text-lg font-bold tracking-tight leading-none">
-                  DOCK<span className="text-blue-500">FORLIFE</span>
-                </h1>
-              </div>
+              <Logo className="h-8 w-8" />
+              <h1 className="text-lg font-bold tracking-tight">
+                DOCK<span className="text-blue-500">FORLIFE</span>
+              </h1>
             </div>
             <div className="flex items-center gap-1.5">
               <button
@@ -893,17 +888,13 @@ export function OBSController() {
               >
                 <button
                   className={cn(
-                    "w-full h-full rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all relative overflow-hidden",
-                    "hover:scale-[1.02] active:scale-95",
-                    "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
-                    isDark ? "focus:ring-offset-zinc-950" : "focus:ring-offset-zinc-50",
+                    "w-full h-full rounded-xl flex flex-col items-center justify-center gap-1 transition-all relative overflow-hidden",
+                    "active:scale-95",
                     isMuted && "opacity-50",
-                    isDragOver && (isDark ? "ring-2 ring-blue-500" : "ring-2 ring-blue-400"),
                   )}
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    boxShadow: isActive ? `0 0 20px ${bgColor}66` : undefined,
                   }}
                   onClick={() => execute(btn)}
                   onContextMenu={(e) => {
@@ -916,16 +907,11 @@ export function OBSController() {
                   onMouseUp={handleLongPressEnd}
                   onMouseLeave={handleLongPressEnd}
                 >
-                  {/* Drag handle indicator */}
-                  <div className="absolute top-1 left-1/2 -translate-x-1/2 opacity-30">
-                    <GripVertical className="h-3 w-3" />
-                  </div>
-
                   <div className="relative">
                     {getIcon(btn.type)}
                     {isMuted && <VolumeX className="absolute -top-1 -right-1 h-3 w-3" style={{ color: textColor }} />}
                   </div>
-                  <span className="text-[10px] sm:text-xs font-bold uppercase text-center px-1 leading-tight line-clamp-2">
+                  <span className="text-xs font-bold uppercase text-center px-1 leading-tight">
                     {btn.label}
                   </span>
                   {isActive && (
@@ -955,22 +941,16 @@ export function OBSController() {
       </main>
 
       {/* Footer */}
-      <footer
-        className={cn(
-          "py-4 px-4",
-          isDark ? "bg-zinc-900/50" : "bg-zinc-100/50",
-        )}
-      >
-        <div className="container max-w-md mx-auto flex flex-col items-center gap-3">
-          <Logo className="h-10 w-10 opacity-30" />
+      <footer className={cn("py-4 px-4", isDark ? "bg-zinc-900/50" : "bg-zinc-100/50")}>
+        <div className="flex flex-col items-center gap-3">
+          <Logo className="h-8 w-8 opacity-30" />
 
-          {/* Donate button */}
           <a
             href="https://paypal.me/daurydicaprio"
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
+              "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium",
               isDark
                 ? "bg-pink-500/10 text-pink-400 hover:bg-pink-500/20"
                 : "bg-pink-100 text-pink-600 hover:bg-pink-200",
@@ -980,25 +960,17 @@ export function OBSController() {
             Donar
           </a>
 
-          <div className="text-center space-y-1">
-            <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-              Made with love by{" "}
-              <a
-                href="https://daurydicaprio.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  "font-medium transition-colors",
-                  isDark ? "text-zinc-300 hover:text-blue-400" : "text-zinc-700 hover:text-blue-600",
-                )}
-              >
-                Daury DiCaprio
-              </a>
-            </p>
-            <p className={cn("text-[10px] font-medium", isDark ? "text-zinc-600" : "text-zinc-400")}>
-              #verygoodforlife
-            </p>
-          </div>
+          <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+            Made with love by{" "}
+            <a
+              href="https://daurydicaprio.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn("font-medium", isDark ? "text-zinc-300 hover:text-blue-400" : "text-zinc-700 hover:text-blue-600")}
+            >
+              Daury DiCaprio
+            </a>
+          </p>
 
           <p className={cn("text-[10px]", isDark ? "text-zinc-700" : "text-zinc-400")}>v1.0.0-beta</p>
         </div>
@@ -1481,27 +1453,23 @@ export function OBSController() {
                 </div>
                 <button
                   id="remote-mode"
-                  onClick={async () => {
+                  onClick={() => {
                     const newValue = !isRemoteMode
                     
                     if (newValue) {
-                      if (connected && obsRef.current) {
-                        console.log(`[UI] Disconnecting local OBS before switching to Remote...`)
+                      console.log(`[UI] Switching to Remote mode - cancelling local OBS...`)
+                      if (obsRef.current) {
                         try {
-                          await obsRef.current.disconnect()
-                        } catch (err) {
-                          console.log(`[UI] Local OBS disconnect error: ${err}`)
-                        }
+                          obsRef.current.disconnect()
+                        } catch {}
                         obsRef.current = null
                       }
                     } else {
-                      if (connected && workerRef.current) {
-                        console.log(`[UI] Disconnecting worker before switching to Local...`)
+                      console.log(`[UI] Switching to Local mode - cancelling worker...`)
+                      if (workerRef.current) {
                         try {
                           workerRef.current.close()
-                        } catch (err) {
-                          console.log(`[UI] Worker disconnect error: ${err}`)
-                        }
+                        } catch {}
                         workerRef.current = null
                       }
                     }
@@ -1511,7 +1479,6 @@ export function OBSController() {
                     setIsRemoteMode(newValue)
                     setConnectionMode("none")
                     localStorage.setItem("dfl_remote_mode", String(newValue))
-                    console.log(`[UI] Remote mode ${newValue ? "enabled" : "disabled"}`)
                     
                     showToast(newValue ? strings.toasts.remoteEnabled : strings.toasts.localEnabled, "success")
                   }}
