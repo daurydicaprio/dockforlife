@@ -343,13 +343,22 @@ func (a *Agent) handleWorkerMessages() {
 				return
 			}
 
+			if len(message) == 0 {
+				continue
+			}
+
 			var msg map[string]interface{}
-			if err := json.Unmarshal(message, &msg); err != fmt.Errorf("unmarshal error: %w", err) {
+			if err := json.Unmarshal(message, &msg); err != nil {
 				fmt.Printf("[Worker] Failed to parse message: %v\n", err)
 				continue
 			}
 
 			msgType, _ := msg["type"].(string)
+			if msgType == "" {
+				fmt.Printf("[Worker] Message without type: %s\n", string(message))
+				continue
+			}
+
 			fmt.Printf("[Worker] Received: %s\n", msgType)
 
 			switch msgType {
@@ -367,6 +376,7 @@ func (a *Agent) handleWorkerMessages() {
 				}
 			case "peer_connected":
 				fmt.Printf("[Worker] Client connected!\n")
+				a.sendOBSData()
 			case "error":
 				errMsg, _ := msg["message"].(string)
 				fmt.Printf("[Worker] Error: %s\n", errMsg)
@@ -375,6 +385,103 @@ func (a *Agent) handleWorkerMessages() {
 			}
 		}
 	}
+}
+
+func (a *Agent) sendOBSData() {
+	a.mu.Lock()
+	obs := a.obsConn
+	a.mu.Unlock()
+
+	if obs == nil {
+		fmt.Printf("[OBS] No connection to send data\n")
+		return
+	}
+
+	fmt.Printf("[OBS] Fetching scene list...\n")
+
+	scenes, err := a.getSceneList()
+	if err != nil {
+		fmt.Printf("[OBS] Failed to get scenes: %v\n", err)
+		return
+	}
+
+	inputs, err := a.getInputList()
+	if err != nil {
+		fmt.Printf("[OBS] Failed to get inputs: %v\n", err)
+		return
+	}
+
+	obsData := map[string]interface{}{
+		"type":   "obs_data",
+		"scenes": scenes,
+		"inputs": inputs,
+		"code":   a.cfg.JoinCode,
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.workerConn != nil {
+		if err := a.workerConn.WriteJSON(obsData); err != nil {
+			fmt.Printf("[Worker] Failed to send OBS data: %v\n", err)
+		} else {
+			fmt.Printf("[Worker] OBS data sent: %d scenes, %d inputs\n", len(scenes), len(inputs))
+		}
+	}
+}
+
+func (a *Agent) getSceneList() ([]string, error) {
+	a.mu.Lock()
+	obs := a.obsConn
+	a.mu.Unlock()
+
+	if obs == nil {
+		return nil, fmt.Errorf("no OBS connection")
+	}
+
+	var result struct {
+		Scenes []struct {
+			SceneName string `json:"sceneName"`
+		} `json:"scenes"`
+	}
+
+	if err := obs.ReadJSON(&result); err != nil {
+		return nil, err
+	}
+
+	scenes := make([]string, len(result.Scenes))
+	for i, s := range result.Scenes {
+		scenes[i] = s.SceneName
+	}
+
+	return scenes, nil
+}
+
+func (a *Agent) getInputList() ([]string, error) {
+	a.mu.Lock()
+	obs := a.obsConn
+	a.mu.Unlock()
+
+	if obs == nil {
+		return nil, fmt.Errorf("no OBS connection")
+	}
+
+	var result struct {
+		Inputs []struct {
+			InputName string `json:"inputName"`
+		} `json:"inputs"`
+	}
+
+	if err := obs.ReadJSON(&result); err != nil {
+		return nil, err
+	}
+
+	inputs := make([]string, len(result.Inputs))
+	for i, inp := range result.Inputs {
+		inputs[i] = inp.InputName
+	}
+
+	return inputs, nil
 }
 
 func (a *Agent) handleShutdown() {
