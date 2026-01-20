@@ -1,107 +1,102 @@
+export interface Env {
+  RELAY_SESSION: DurableObjectNamespace
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
 
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ 
-        status: "ok", 
-        timestamp: Date.now(),
-        rooms: roomManager.size 
-      }), {
+      return new Response(JSON.stringify({ status: "ok" }), {
         headers: { "Content-Type": "application/json" }
       })
     }
 
     if (request.headers.get("Upgrade") === "websocket") {
-      return handleWebSocket(request)
+      const code = url.searchParams.get("code")?.toUpperCase() || ""
+      const role = url.searchParams.get("role") || "client"
+
+      if (code.length < 4) {
+        return new Response("Invalid code", { status: 400 })
+      }
+
+      const id = env.RELAY_SESSION.idFromName(code)
+      const stub = env.RELAY_SESSION.get(id)
+
+      return stub.fetch(request)
     }
 
     return new Response("Expected WebSocket", { status: 426 })
   }
 }
 
-interface SocketState {
-  socket: WebSocket
-  joinCode: string
-  role: string
-}
+export class RelaySession {
+  private hostSocket: WebSocket | null = null
+  private clientSocket: WebSocket | null = null
+  private code: string = ""
 
-const roomManager = new Map<string, SocketState>()
+  constructor(private state: DurableObjectState) {}
 
-function handleWebSocket(request: Request): Response {
-  const url = new URL(request.url)
-  const code = url.searchParams.get("code")?.toUpperCase() || ""
-  const role = url.searchParams.get("role") || "client"
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    this.code = url.searchParams.get("code")?.toUpperCase() || ""
+    const role = url.searchParams.get("role") || "client"
 
-  if (code.length < 4) {
-    return new Response("Invalid code", { status: 400 })
-  }
+    console.log(`[Relay] Incoming: ${this.code} (${role})`)
 
-  try {
-    const pair = new WebSocketPair()
-    const [clientSocket, serverSocket] = [pair[0], pair[1]]
+    try {
+      const pair = new WebSocketPair()
+      const [clientSocket, serverSocket] = [pair[0], pair[1]]
 
-    serverSocket.accept()
-    console.log(`[Worker] Connected: ${code} (${role})`)
+      serverSocket.accept()
+      console.log(`[Relay] Connected: ${this.code} (${role})`)
 
-    const state: SocketState = { socket: serverSocket, joinCode: code, role }
+      if (role === "host") {
+        this.hostSocket = serverSocket
+        console.log(`[Relay] Host registered: ${this.code}`)
+      } else {
+        this.clientSocket = serverSocket
+        console.log(`[Relay] Client registered: ${this.code}`)
+      }
 
-    serverSocket.addEventListener("message", (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data as string)
-        console.log(`[Worker] ${code}: ${data.type}`)
+      serverSocket.addEventListener("message", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data as string)
+          console.log(`[Relay] ${this.code}: ${data.type}`)
 
-        if (data.type === "register") {
-          const regCode = (data.code || code).toUpperCase()
-          const regRole = data.role || role
-          
-          state.joinCode = regCode
-          state.role = regRole
-
-          const peer = roomManager.get(regCode)
-
-          if (peer) {
-            if (regRole === "host" && peer.role === "host") {
-              serverSocket.send(JSON.stringify({ type: "error", message: "Host exists" }))
-              return
+          if (data.type === "register") {
+            if (role === "host" && this.clientSocket) {
+              this.clientSocket.send(JSON.stringify({ type: "connected", code: this.code }))
+              this.hostSocket?.send(JSON.stringify({ type: "peer_connected", code: this.code }))
+              console.log(`[Relay] SUCCESS: ${this.code}`)
+            } else if (this.hostSocket) {
+              this.hostSocket.send(JSON.stringify({ type: "connected", code: this.code }))
+              this.clientSocket?.send(JSON.stringify({ type: "peer_connected", code: this.code }))
+              console.log(`[Relay] SUCCESS: ${this.code}`)
+            } else {
+              serverSocket.send(JSON.stringify({ type: "waiting", code: this.code }))
+              console.log(`[Relay] Waiting: ${this.code}`)
             }
-
-            console.log(`[Worker] Pairing: ${regCode}`)
-
-            peer.socket.addEventListener("message", (ev: MessageEvent) => {
-              try { state.socket.send(ev.data) } catch {}
-            })
-            state.socket.addEventListener("message", (ev: MessageEvent) => {
-              try { peer.socket.send(ev.data) } catch {}
-            })
-
-            serverSocket.send(JSON.stringify({ type: "connected", code: regCode }))
-            peer.socket.send(JSON.stringify({ type: "peer_connected", code: regCode }))
-
-            roomManager.set(regCode, state)
-            console.log(`[Worker] SUCCESS: ${regCode}`)
-          } else {
-            roomManager.set(regCode, state)
-            serverSocket.send(JSON.stringify({ type: "waiting", code: regCode }))
-            console.log(`[Worker] Waiting: ${regCode}`)
           }
+        } catch (err) {
+          console.log(`[Relay] Error: ${err}`)
         }
-      } catch (err) {
-        console.log(`[Worker] Error: ${err}`)
-      }
-    })
+      })
 
-    serverSocket.addEventListener("close", () => {
-      console.log(`[Worker] Disconnected: ${code}`)
-      if (roomManager.get(code) === state) {
-        roomManager.delete(code)
-      }
-    })
+      serverSocket.addEventListener("close", () => {
+        console.log(`[Relay] Disconnected: ${this.code}`)
+        if (role === "host") {
+          this.hostSocket = null
+        } else {
+          this.clientSocket = null
+        }
+      })
 
-    return new Response(null, { status: 101, webSocket: clientSocket })
+      return new Response(null, { status: 101, webSocket: clientSocket })
 
-  } catch (error) {
-    console.error(`[Worker] Failed: ${error}`)
-    return new Response("Error", { status: 500 })
+    } catch (error) {
+      console.error(`[Relay] Failed: ${error}`)
+      return new Response("Error", { status: 500 })
+    }
   }
 }
