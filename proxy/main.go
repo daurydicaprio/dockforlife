@@ -320,8 +320,11 @@ func (a *Agent) handleWorkerMessages() {
 				time.Sleep(500 * time.Millisecond)
 				a.sendOBSData()
 			case "request_update":
+				fmt.Printf("[Worker] Request update received, fetching OBS data...\n")
 				time.Sleep(200 * time.Millisecond)
 				a.sendOBSData()
+			case "request_status":
+				a.sendStatusUpdate()
 			}
 		}
 	}
@@ -358,6 +361,42 @@ func (a *Agent) sendOBSData() {
 
 	if a.workerConn != nil {
 		a.workerConn.WriteJSON(obsData)
+	}
+}
+
+func (a *Agent) sendStatusUpdate() {
+	a.mu.Lock()
+	obs := a.obsConn
+	a.mu.Unlock()
+
+	if obs == nil {
+		return
+	}
+
+	recStatus, _ := a.callOBS("GetRecordStatus")
+	strStatus, _ := a.callOBS("GetStreamStatus")
+
+	recActive := false
+	strActive := false
+	if len(recStatus) > 0 && recStatus[0] == "active" {
+		recActive = true
+	}
+	if len(strStatus) > 0 && strStatus[0] == "active" {
+		strActive = true
+	}
+
+	statusData := map[string]interface{}{
+		"type":   "obs_status",
+		"rec":    recActive,
+		"str":    strActive,
+		"status": "ok",
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.workerConn != nil {
+		a.workerConn.WriteJSON(statusData)
 	}
 }
 
