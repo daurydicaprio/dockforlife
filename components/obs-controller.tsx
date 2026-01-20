@@ -287,13 +287,13 @@ export function OBSController() {
       return
     }
 
-    console.log(`[Worker] Connecting to ${workerUrl}?code=${code}`)
+    console.log(`[Worker] Connecting to ${workerUrl}?code=${code}&role=client`)
 
     setIsConnecting(true)
     setRemoteWaitingForAgent(false)
 
     try {
-      const fullUrl = `${workerUrl}?code=${code}&type=client`
+      const fullUrl = `${workerUrl}?code=${code}&role=client`
       const ws = new WebSocket(fullUrl)
 
       ws.onopen = () => {
@@ -345,31 +345,24 @@ export function OBSController() {
 
   const connectOBS = useCallback(async () => {
     const currentRemoteMode = isRemoteModeRef.current
-    const currentRemoteUrl = remoteUrl || getWorkerUrl()
-    const currentJoinCode = autoJoinCode || joinCode
     
-    console.log(`[OBS] connectOBS called with isRemoteMode=${currentRemoteMode}`)
-    console.log(`[OBS] Local OBS connected: ${connected}`)
+    if (currentRemoteMode) {
+      console.log(`[OBS] Remote mode is active, skipping local OBS connection`)
+      return
+    }
     
-    if (obsRef.current && connected && currentRemoteMode) {
-      console.log(`[OBS] Local OBS already connected, skipping reconnect`)
+    console.log(`[OBS] Connecting to local OBS: ${wsUrl}`)
+    
+    if (obsRef.current && connected) {
+      console.log(`[OBS] Already connected to local OBS`)
       return
     }
 
-    if (obsRef.current && connected && !currentRemoteMode) {
-      console.log(`[OBS] Already connected to local OBS, no action needed`)
-      return
-    }
-
-    if (obsRef.current && !connected) {
+    if (obsRef.current) {
       try {
-        console.log(`[OBS] Disconnecting previous socket...`)
         await obsRef.current.disconnect()
-      } catch (err) {
-        console.log(`[OBS] Previous socket disconnect error (ignored): ${err}`)
-      }
+      } catch {}
       obsRef.current = null
-      setConnected(false)
     }
 
     setIsConnecting(true)
@@ -378,16 +371,10 @@ export function OBSController() {
     const obs = new OBSWebSocket()
     obsRef.current = obs
 
-    const targetUrl = wsUrl
-    
-    setConnectionMode("local")
-    console.log(`[OBS] Connecting to local OBS: ${targetUrl}`)
-
     try {
-      console.log(`[OBS] Attempting WebSocket connection to: ${targetUrl}`)
-      await obs.connect(targetUrl, wsPassword || undefined, { rpcVersion: 1 })
+      await obs.connect(wsUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
-      setConnectionMode(isRemoteModeRef.current ? "bridge" : "local")
+      setConnectionMode("local")
       showToast(strings.toasts.connected, "success")
       console.log(`[OBS] Connected to local OBS successfully`)
 
@@ -429,19 +416,16 @@ export function OBSController() {
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
-      localStorage.setItem("dfl_remote_url", currentRemoteUrl)
-      localStorage.setItem("dfl_join_code", currentJoinCode)
-      localStorage.setItem("dfl_remote_mode", String(currentRemoteMode))
     } catch (error) {
       setConnected(false)
       setConnectionMode("none")
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       showToast(strings.toasts.connectionError, "error")
-      console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
+      console.error(`[OBS] Connection failed: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, remoteUrl, joinCode, autoJoinCode, showToast, connected])
+  }, [wsUrl, wsPassword, showToast, connected])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -1584,7 +1568,19 @@ export function OBSController() {
           )}
           {!isClientMode && (
             <DialogFooter>
-              <Button onClick={connectOBS} className="w-full" disabled={isConnecting}>
+              <Button
+                onClick={() => {
+                  if (isRemoteMode) {
+                    console.log(`[OBS] Remote mode active, using Worker...`)
+                    connectToWorker()
+                  } else {
+                    console.log(`[OBS] Local mode, connecting to OBS...`)
+                    connectOBS()
+                  }
+                }}
+                className="w-full"
+                disabled={isConnecting}
+              >
                 {isConnecting ? strings.settings.connecting : connected ? strings.settings.button : strings.settings.button}
               </Button>
             </DialogFooter>
