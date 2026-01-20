@@ -42,10 +42,6 @@ function normalizeCode(code: string): string {
   return code.toUpperCase().trim().replace(/[^A-Z0-9]/g, '')
 }
 
-function sanitizeLog(data: string): string {
-  return data.replace(/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/g, "[IP_REDACTED]")
-}
-
 function isValidCode(code: string): boolean {
   return /^[A-Za-z0-9]{4,12}$/.test(code)
 }
@@ -57,23 +53,19 @@ function handleWebSocket(request: Request): Response {
   let code = normalizeCode(url.searchParams.get("code") || "")
   const role = url.searchParams.get("role") || "client"
 
-  console.log(`[Worker] New WebSocket: code=${code}, role=${role}`)
+  console.log(`[Worker] Incoming: code=${code}, role=${role}`)
 
-  if (!code) {
-    console.log(`[Worker] Invalid: no code`)
-    return new Response("Invalid code: code is required", { status: 400 })
-  }
-
-  if (!isValidCode(code)) {
-    console.log(`[Worker] Invalid code format: ${code}`)
-    return new Response("Invalid code format (4-12 alphanumeric chars)", { status: 400 })
+  if (!code || !isValidCode(code)) {
+    console.log(`[Worker] Invalid code: ${code}`)
+    return new Response("Invalid code", { status: 400 })
   }
 
   try {
     const pair = new WebSocketPair()
     const [clientSocket, serverSocket] = [pair[0], pair[1]]
     
-    console.log(`[Worker] Accepted: code=${code}`)
+    serverSocket.accept()
+    console.log(`[Worker] Socket accepted: code=${code}, role=${role}`)
 
     const state: SocketState = {
       socket: serverSocket,
@@ -86,16 +78,16 @@ function handleWebSocket(request: Request): Response {
     serverSocket.addEventListener("message", (e: MessageEvent) => {
       try {
         const rawData = e.data as string
-        const sanitized = sanitizeLog(rawData.substring(0, 200))
-        console.log(`[Worker] Msg(${code}): ${sanitized}`)
+        console.log(`[Worker] Raw message: ${rawData.substring(0, 100)}`)
 
         const data = JSON.parse(rawData)
+        console.log(`[Worker] Parsed: type=${data.type}, code=${data.code || code}, role=${data.role || role}`)
 
         if (data.type === "register") {
           state.joinCode = normalizeCode(data.code || data.joinCode || code)
           state.role = data.role || role
-
-          console.log(`[Worker] Register: code=${state.joinCode}, role=${state.role}`)
+          
+          console.log(`[Worker] Registering: code=${state.joinCode}, role=${state.role}`)
 
           const peer = roomManager.get(state.joinCode)
 
@@ -107,52 +99,23 @@ function handleWebSocket(request: Request): Response {
               return
             }
 
-            console.log(`[Worker] Pairing: ${state.joinCode}`)
+            console.log(`[Worker] Pairing ${state.joinCode}: ${state.role} <-> ${peer.role}`)
 
             peer.socket.addEventListener("message", (ev: MessageEvent) => {
-              try { 
-                peer.socket.send(ev.data)
-                console.log(`[Worker] Forward host->client`)
-              } catch (err) {
-                console.log(`[Worker] Forward error (host->client): ${err}`)
-              }
+              try { state.socket.send(ev.data) } catch {}
             })
             state.socket.addEventListener("message", (ev: MessageEvent) => {
-              try { 
-                state.socket.send(ev.data)
-                console.log(`[Worker] Forward client->host`)
-              } catch (err) {
-                console.log(`[Worker] Forward error (client->host): ${err}`)
-              }
+              try { peer.socket.send(ev.data) } catch {}
             })
 
-            console.log(`[Worker] Sending peer_connected to client...`)
-            try {
-              state.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
-              console.log(`[Worker] ✓ peer_connected sent to client`)
-            } catch (err) {
-              console.log(`[Worker] ✗ Failed to send to client: ${err}`)
-            }
+            const response = JSON.stringify({ type: "peer_connected", code: state.joinCode })
+            serverSocket.send(response)
+            peer.socket.send(response)
             
-            console.log(`[Worker] Sending peer_connected to host...`)
-            try {
-              peer.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
-              console.log(`[Worker] ✓ peer_connected sent to host`)
-            } catch (err) {
-              console.log(`[Worker] ✗ Failed to send to host: ${err}`)
-            }
-
-            console.log(`[Worker] Sending connected to client...`)
-            try {
-              state.socket.send(JSON.stringify({ type: "connected", code: state.joinCode }))
-              console.log(`[Worker] ✓ connected sent to client`)
-            } catch (err) {}
-
             roomManager.set(state.joinCode, state)
             console.log(`[Worker] SUCCESS: paired for ${state.joinCode}`)
           } else {
             roomManager.set(state.joinCode, state)
-            console.log(`[Worker] Sending waiting to client...`)
             serverSocket.send(JSON.stringify({ type: "waiting", code: state.joinCode }))
             console.log(`[Worker] Waiting for peer: ${state.joinCode}`)
           }
@@ -160,7 +123,6 @@ function handleWebSocket(request: Request): Response {
         }
 
         if (data.type === "ping") {
-          console.log(`[Worker] Ping: ${code}`)
           serverSocket.send(JSON.stringify({ type: "pong" }))
           return
         }
@@ -180,13 +142,13 @@ function handleWebSocket(request: Request): Response {
           }
         }
       } catch (err) {
-        console.log(`[Worker] Parse error: ${err}`)
+        console.log(`[Worker] Error: ${err}`)
       }
     })
 
     serverSocket.addEventListener("close", () => {
+      console.log(`[Worker] Close: ${state.joinCode}`)
       if (roomManager.get(state.joinCode) === state) {
-        console.log(`[Worker] Cleanup: ${state.joinCode}`)
         roomManager.delete(state.joinCode)
       }
     })
@@ -195,6 +157,6 @@ function handleWebSocket(request: Request): Response {
 
   } catch (error) {
     console.error(`[Worker] Setup failed: ${error}`)
-    return new Response("Internal error", { status: 500 })
+    return new Response("Error", { status: 500 })
   }
 }
