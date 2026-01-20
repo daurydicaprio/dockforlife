@@ -575,6 +575,15 @@ export function OBSController() {
               ...(btn.filter && { filter: btn.filter }),
             },
           }
+          
+          if (btn.type === "Mute" && btn.target) {
+            const targetName = btn.target
+            setMuteStates((prev) => ({
+              ...prev,
+              [targetName]: !Boolean(prev[targetName]),
+            }))
+          }
+          
           workerRef.current.send(JSON.stringify(command))
           return
         }
