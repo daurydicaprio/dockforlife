@@ -1531,6 +1531,39 @@ export function OBSController() {
                 </Select>
               </div>
 
+              <div className="flex gap-2 p-1 rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRemoteMode(false)
+                    setConnectionMode("none")
+                  }}
+                  className={cn(
+                    "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all",
+                    !isRemoteMode
+                      ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white"
+                      : "text-zinc-500 dark:text-zinc-400"
+                  )}
+                >
+                  🏠 Local
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRemoteMode(true)
+                    setConnectionMode("none")
+                  }}
+                  className={cn(
+                    "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all",
+                    isRemoteMode
+                      ? "bg-blue-500 text-white shadow-sm"
+                      : "text-zinc-500 dark:text-zinc-400"
+                  )}
+                >
+                  ☁️ Remote
+                </button>
+              </div>
+
               <div
                 className={cn(
                   "rounded-lg p-4 border",

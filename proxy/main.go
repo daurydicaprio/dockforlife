@@ -37,6 +37,7 @@ type Agent struct {
 	mu         sync.Mutex
 	connected  bool
 	stopChan   chan struct{}
+	obsReady   bool
 }
 
 func NewAgent(cfg Config) *Agent {
@@ -131,7 +132,7 @@ func (a *Agent) connectOBSWithRetry() {
 
 func (a *Agent) connectOBS() error {
 	a.mu.Lock()
-	if a.connected {
+	if a.obsReady && a.obsConn != nil {
 		a.mu.Unlock()
 		return nil
 	}
@@ -139,14 +140,15 @@ func (a *Agent) connectOBS() error {
 
 	log.Printf("[OBS] Connecting to OBS: %s", a.cfg.OBSURL)
 
-	obs, _, err := websocket.DefaultDialer.Dial(a.cfg.OBSURL, nil)
+	obs, resp, err := websocket.DefaultDialer.Dial(a.cfg.OBSURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to OBS: %w", err)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to connect to OBS: %w, body: %s", err, string(body))
 	}
 
 	a.mu.Lock()
 	a.obsConn = obs
-	a.connected = true
+	a.obsReady = true
 	a.mu.Unlock()
 
 	fmt.Printf("[OBS] ✓ Connected to OBS\n")
@@ -233,9 +235,12 @@ func (a *Agent) Stop() {
 
 	if a.obsConn != nil {
 		a.obsConn.Close()
+		a.obsConn = nil
+		a.obsReady = false
 	}
 	if a.workerConn != nil {
 		a.workerConn.Close()
+		a.workerConn = nil
 	}
 
 	a.connected = false
@@ -264,7 +269,7 @@ func (a *Agent) handleOBSMessages() {
 				log.Printf("[OBS] Read error: %v", err)
 				a.mu.Lock()
 				a.obsConn = nil
-				a.connected = false
+				a.obsReady = false
 				a.mu.Unlock()
 				go a.connectOBSWithRetry()
 				return
@@ -328,7 +333,8 @@ func (a *Agent) handleWorkerMessages() {
 
 			case "command":
 				method, _ := workerMsg["method"].(string)
-				params, _ := workerMsg["params"].(map[string]interface{})
+				paramsRaw, _ := workerMsg["params"].(interface{})
+				params, _ := paramsRaw.(map[string]interface{})
 				if method != "" {
 					a.SendCommand(method, params)
 				}
