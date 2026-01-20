@@ -110,20 +110,36 @@ function handleWebSocket(request: Request): Response {
             console.log(`[Worker] Pairing: ${state.joinCode}`)
 
             peer.socket.addEventListener("message", (ev: MessageEvent) => {
-              try { state.socket.send(ev.data) } catch {}
+              try { 
+                peer.socket.send(ev.data)
+                console.log(`[Worker] Forward host->client`)
+              } catch (err) {
+                console.log(`[Worker] Forward error (host->client): ${err}`)
+              }
             })
             state.socket.addEventListener("message", (ev: MessageEvent) => {
-              try { peer.socket.send(ev.data) } catch {}
+              try { 
+                state.socket.send(ev.data)
+                console.log(`[Worker] Forward client->host`)
+              } catch (err) {
+                console.log(`[Worker] Forward error (client->host): ${err}`)
+              }
             })
 
+            console.log(`[Worker] Sending peer_connected to client...`)
             state.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
+            
+            console.log(`[Worker] Sending peer_connected to host...`)
             peer.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
+
+            console.log(`[Worker] Sending connected to client...`)
             state.socket.send(JSON.stringify({ type: "connected", code: state.joinCode }))
 
             roomManager.set(state.joinCode, state)
             console.log(`[Worker] SUCCESS: paired for ${state.joinCode}`)
           } else {
             roomManager.set(state.joinCode, state)
+            console.log(`[Worker] Sending waiting to client...`)
             serverSocket.send(JSON.stringify({ type: "waiting", code: state.joinCode }))
             console.log(`[Worker] Waiting for peer: ${state.joinCode}`)
           }

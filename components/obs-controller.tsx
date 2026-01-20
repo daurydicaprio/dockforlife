@@ -309,8 +309,18 @@ export function OBSController() {
       }
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        console.log(`[Worker] Received: ${JSON.stringify(data)}`)
+        const rawData = event.data as string
+        console.log(`[Worker] Raw message received: ${rawData}`)
+        
+        let data
+        try {
+          data = JSON.parse(rawData)
+        } catch (e) {
+          console.error(`[Worker] Failed to parse message: ${e}`)
+          return
+        }
+        
+        console.log(`[Worker] Parsed message: type=${data.type}, code=${data.code || 'N/A'}`)
 
         if (data.type === "waiting") {
           console.log(`[Worker] Waiting for host...`)
@@ -323,6 +333,7 @@ export function OBSController() {
           setConnected(true)
           setConnectionMode("remote")
           setIsConnecting(false)
+          setSettingsOpen(false)
           showToast(strings.toasts.connected, "success")
         } else if (data.type === "connected") {
           console.log(`[Worker] SUCCESS: connected`)
@@ -331,9 +342,14 @@ export function OBSController() {
           setConnected(true)
           setConnectionMode("remote")
           setIsConnecting(false)
+          setSettingsOpen(false)
           showToast(strings.toasts.connected, "success")
         } else if (data.type === "obs_event") {
           console.log(`[Worker] OBS event received`)
+        } else if (data.type === "error") {
+          console.error(`[Worker] Error from server: ${data.message}`)
+          showToast(data.message || strings.toasts.connectionError, "error")
+          setIsConnecting(false)
         }
       }
 
