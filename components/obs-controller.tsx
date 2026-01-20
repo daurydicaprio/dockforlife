@@ -287,16 +287,17 @@ export function OBSController() {
       return
     }
 
-    console.log(`[Worker] Connecting to ${workerUrl}?code=${code}&role=client`)
-
-    setIsConnecting(true)
-    setRemoteWaitingForAgent(false)
-
     try {
-      const fullUrl = `${workerUrl}?code=${code}&role=client`
-      console.log(`[DEBUG] WebSocket Intent: ${fullUrl}`)
+      const url = new URL(workerUrl)
+      url.searchParams.set('code', code)
+      url.searchParams.set('role', 'client')
       
-      const ws = new WebSocket(fullUrl)
+      console.log(`[Worker] Connecting to: ${url.toString()}`)
+
+      setIsConnecting(true)
+      setRemoteWaitingForAgent(false)
+
+      const ws = new WebSocket(url.toString())
 
       ws.onopen = () => {
         console.log(`[Worker] Connected, waiting for host...`)
