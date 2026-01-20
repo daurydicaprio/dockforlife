@@ -104,6 +104,15 @@ export class RelaySession {
             return
           }
 
+          if (msgType === "obs_command" || msgType === "ping" || msgType === "pong") {
+            const peer = isHost ? this.clientSocket : this.hostSocket
+            if (peer && peer.readyState === WebSocket.OPEN) {
+              peer.send(data)
+              console.log(`[Relay] Forwarded ${msgType}`)
+            }
+            return
+          }
+
           if (this.hostRegistered && this.clientRegistered) {
             const peer = isHost ? this.clientSocket : this.hostSocket
             if (peer && peer.readyState === WebSocket.OPEN) {
