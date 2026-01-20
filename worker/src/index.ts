@@ -12,16 +12,6 @@ export default {
       })
     }
 
-    if (url.pathname === "/metrics") {
-      return new Response(JSON.stringify({
-        status: "ok",
-        activeRooms: roomManager.size,
-        timestamp: Date.now()
-      }), {
-        headers: { "Content-Type": "application/json" }
-      })
-    }
-
     if (request.headers.get("Upgrade") === "websocket") {
       return handleWebSocket(request)
     }
@@ -34,29 +24,16 @@ interface SocketState {
   socket: WebSocket
   joinCode: string
   role: string
-  ip: string
-  connectedAt: number
-}
-
-function normalizeCode(code: string): string {
-  return code.toUpperCase().trim().replace(/[^A-Z0-9]/g, '')
-}
-
-function isValidCode(code: string): boolean {
-  return /^[A-Za-z0-9]{4,12}$/.test(code)
 }
 
 const roomManager = new Map<string, SocketState>()
 
 function handleWebSocket(request: Request): Response {
   const url = new URL(request.url)
-  let code = normalizeCode(url.searchParams.get("code") || "")
+  const code = url.searchParams.get("code")?.toUpperCase() || ""
   const role = url.searchParams.get("role") || "client"
 
-  console.log(`[Worker] Incoming: code=${code}, role=${role}`)
-
-  if (!code || !isValidCode(code)) {
-    console.log(`[Worker] Invalid code: ${code}`)
+  if (code.length < 4) {
     return new Response("Invalid code", { status: 400 })
   }
 
@@ -65,41 +42,31 @@ function handleWebSocket(request: Request): Response {
     const [clientSocket, serverSocket] = [pair[0], pair[1]]
 
     serverSocket.accept()
-    console.log(`[Worker] Socket accepted: code=${code}, role=${role}`)
+    console.log(`[Worker] Connected: ${code} (${role})`)
 
-    const state: SocketState = {
-      socket: serverSocket,
-      joinCode: code,
-      role: role,
-      ip: "[REDACTED]",
-      connectedAt: Date.now(),
-    }
+    const state: SocketState = { socket: serverSocket, joinCode: code, role }
 
     serverSocket.addEventListener("message", (e: MessageEvent) => {
       try {
-        const rawData = e.data as string
-        console.log(`[Worker] Raw message: ${rawData.substring(0, 100)}`)
-
-        const data = JSON.parse(rawData)
-        console.log(`[Worker] Parsed: type=${data.type}, code=${data.code || code}`)
+        const data = JSON.parse(e.data as string)
+        console.log(`[Worker] ${code}: ${data.type}`)
 
         if (data.type === "register") {
-          state.joinCode = normalizeCode(data.code || data.joinCode || code)
-          state.role = data.role || role
+          const regCode = (data.code || code).toUpperCase()
+          const regRole = data.role || role
           
-          console.log(`[Worker] Register: code=${state.joinCode}, role=${state.role}`)
+          state.joinCode = regCode
+          state.role = regRole
 
-          const peer = roomManager.get(state.joinCode)
+          const peer = roomManager.get(regCode)
 
           if (peer) {
-            if (state.role === "host" && peer.role === "host") {
-              console.log(`[Worker] Reject: host exists`)
-              serverSocket.send(JSON.stringify({ type: "error", message: "Host already exists" }))
-              serverSocket.close(4001, "Host exists")
+            if (regRole === "host" && peer.role === "host") {
+              serverSocket.send(JSON.stringify({ type: "error", message: "Host exists" }))
               return
             }
 
-            console.log(`[Worker] Pairing: ${state.joinCode}`)
+            console.log(`[Worker] Pairing: ${regCode}`)
 
             peer.socket.addEventListener("message", (ev: MessageEvent) => {
               try { state.socket.send(ev.data) } catch {}
@@ -108,37 +75,15 @@ function handleWebSocket(request: Request): Response {
               try { peer.socket.send(ev.data) } catch {}
             })
 
-            const response = JSON.stringify({ type: "peer_connected", code: state.joinCode })
-            serverSocket.send(response)
-            peer.socket.send(response)
-            
-            roomManager.set(state.joinCode, state)
-            console.log(`[Worker] SUCCESS: paired for ${state.joinCode}`)
+            serverSocket.send(JSON.stringify({ type: "connected", code: regCode }))
+            peer.socket.send(JSON.stringify({ type: "peer_connected", code: regCode }))
+
+            roomManager.set(regCode, state)
+            console.log(`[Worker] SUCCESS: ${regCode}`)
           } else {
-            roomManager.set(state.joinCode, state)
-            serverSocket.send(JSON.stringify({ type: "waiting", code: state.joinCode }))
-            console.log(`[Worker] Waiting for peer: ${state.joinCode}`)
-          }
-          return
-        }
-
-        if (data.type === "ping") {
-          serverSocket.send(JSON.stringify({ type: "pong" }))
-          return
-        }
-
-        if (data.type === "obs_event") {
-          const peer = roomManager.get(state.joinCode)
-          if (peer && peer !== state) {
-            peer.socket.send(e.data)
-          }
-          return
-        }
-
-        if (state.role !== "host") {
-          const peer = roomManager.get(state.joinCode)
-          if (peer) {
-            peer.socket.send(e.data)
+            roomManager.set(regCode, state)
+            serverSocket.send(JSON.stringify({ type: "waiting", code: regCode }))
+            console.log(`[Worker] Waiting: ${regCode}`)
           }
         }
       } catch (err) {
@@ -147,16 +92,16 @@ function handleWebSocket(request: Request): Response {
     })
 
     serverSocket.addEventListener("close", () => {
-      console.log(`[Worker] Close: ${state.joinCode}`)
-      if (roomManager.get(state.joinCode) === state) {
-        roomManager.delete(state.joinCode)
+      console.log(`[Worker] Disconnected: ${code}`)
+      if (roomManager.get(code) === state) {
+        roomManager.delete(code)
       }
     })
 
     return new Response(null, { status: 101, webSocket: clientSocket })
 
   } catch (error) {
-    console.error(`[Worker] Setup failed: ${error}`)
+    console.error(`[Worker] Failed: ${error}`)
     return new Response("Error", { status: 500 })
   }
 }
