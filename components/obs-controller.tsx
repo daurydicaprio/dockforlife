@@ -281,9 +281,12 @@ export function OBSController() {
   const connectToWorker = useCallback(async () => {
     const workerUrl = getWorkerUrl()
     const code = joinCode.trim().toUpperCase()
-    
-    if (!isValidJoinCode(code)) {
-      showToast(strings.toasts.codeExpired, "error")
+
+    console.log(`[Worker] connectToWorker called with code="${code}" (length: ${code.length})`)
+
+    if (code.length < 4) {
+      console.log(`[Worker] Code too short, showing error...`)
+      showToast("Enter a valid code (4+ chars)", "error")
       return
     }
 
