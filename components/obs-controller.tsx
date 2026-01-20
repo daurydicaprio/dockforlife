@@ -175,13 +175,14 @@ export function OBSController() {
   const [adapter, setAdapter] = useState<OBSWebSocketAdapter | null>(null)
   const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
   const [isRemoteMode, setIsRemoteMode] = useState(false)
-  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none" | "dual">("none")
+  const [isRemoteConnected, setIsRemoteConnected] = useState(false)
+  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none" | "dual" | "bridge">("none")
   const [autoJoinCode, setAutoJoinCode] = useState<string>("")
   const [isMobile, setIsMobile] = useState(false)
   const [remoteConnectionFailed, setRemoteConnectionFailed] = useState(false)
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
-  const connectionModeRef = useRef<"local" | "remote" | "none" | "dual">("none")
+  const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
 
   useEffect(() => {
     isRemoteModeRef.current = isRemoteMode
@@ -279,63 +280,47 @@ export function OBSController() {
     const currentJoinCode = autoJoinCode || joinCode
     
     console.log(`[OBS] connectOBS called with isRemoteMode=${currentRemoteMode}`)
-    console.log(`[OBS] Using worker URL: ${currentRemoteUrl}`)
-    console.log(`[OBS] Using join code: ${currentJoinCode}`)
+    console.log(`[OBS] Local OBS connected: ${connected}`)
     
+    if (obsRef.current && connected && currentRemoteMode) {
+      console.log(`[OBS] Local OBS already connected, skipping reconnect`)
+      return
+    }
+
+    if (obsRef.current && connected && !currentRemoteMode) {
+      console.log(`[OBS] Already connected to local OBS, no action needed`)
+      return
+    }
+
     if (obsRef.current && !connected) {
       try {
         console.log(`[OBS] Disconnecting previous socket...`)
         await obsRef.current.disconnect()
-        obsRef.current = null
-        setConnected(false)
-        setConnectionMode("none")
       } catch (err) {
         console.log(`[OBS] Previous socket disconnect error (ignored): ${err}`)
       }
-    }
-
-    if (currentRemoteMode && connected && connectionMode === "local") {
-      console.log(`[OBS] Maintaining local OBS connection while switching to remote mode`)
-      setConnectionMode("dual")
-      startRemoteTimeout()
-      return
+      obsRef.current = null
+      setConnected(false)
     }
 
     setIsConnecting(true)
-    setConnectionMode("none")
     setRemoteConnectionFailed(false)
 
     const obs = new OBSWebSocket()
     obsRef.current = obs
 
-    let targetUrl = wsUrl
-    let finalJoinCode = currentJoinCode
-
-    if (currentRemoteMode) {
-      if (!currentJoinCode) {
-        setIsConnecting(false)
-        showToast(strings.toasts.codeExpired, "error")
-        console.error(`[OBS] Remote mode enabled but join code is empty`)
-        return
-      }
+    const targetUrl = wsUrl
     
-      targetUrl = currentRemoteUrl.startsWith("wss://") ? currentRemoteUrl : `wss://${currentRemoteUrl}`
-      finalJoinCode = currentJoinCode.trim()
-      
-      setConnectionMode("remote")
-      console.log(`[OBS] Connecting to remote worker: ${targetUrl}?code=${finalJoinCode}`)
-    } else {
-      setConnectionMode("local")
-      console.log(`[OBS] Connecting to local OBS: ${targetUrl}`)
-    }
+    setConnectionMode("local")
+    console.log(`[OBS] Connecting to local OBS: ${targetUrl}`)
 
     try {
       console.log(`[OBS] Attempting WebSocket connection to: ${targetUrl}`)
       await obs.connect(targetUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
-      setConnectionMode(currentRemoteMode ? "remote" : "local")
+      setConnectionMode(isRemoteModeRef.current ? "bridge" : "local")
       showToast(strings.toasts.connected, "success")
-      console.log(`[OBS] Connected successfully (${currentRemoteMode ? "remote" : "local"}) to ${targetUrl}`)
+      console.log(`[OBS] Connected to local OBS successfully`)
 
       const special = await obs.call("GetSpecialInputs")
       setDeck((prev) =>
@@ -369,7 +354,6 @@ export function OBSController() {
       })
 
       console.log(`[OBS] Scenes loaded: ${sceneList.scenes.length}`)
-      console.log(`[OBS] Inputs loaded: ${inputList.inputs.length}`)
 
       const obsAdapter = new OBSWebSocketAdapter(obs)
       setAdapter(obsAdapter)
@@ -377,23 +361,18 @@ export function OBSController() {
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
       localStorage.setItem("dfl_remote_url", currentRemoteUrl)
-      localStorage.setItem("dfl_join_code", finalJoinCode)
+      localStorage.setItem("dfl_join_code", currentJoinCode)
       localStorage.setItem("dfl_remote_mode", String(currentRemoteMode))
     } catch (error) {
-      if (currentRemoteMode) {
-        setRemoteConnectionFailed(true)
-        console.log(`[OBS] Remote connection failed, local connection maintained`)
-      } else {
-        setConnected(false)
-        setConnectionMode("none")
-        const errorMsg = error instanceof Error ? error.message : "Unknown error"
-        showToast(strings.toasts.connectionError, "error")
-        console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
-      }
+      setConnected(false)
+      setConnectionMode("none")
+      const errorMsg = error instanceof Error ? error.message : "Unknown error"
+      showToast(strings.toasts.connectionError, "error")
+      console.error(`[OBS] Connection failed to ${targetUrl}: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, remoteUrl, joinCode, autoJoinCode, showToast, connected, connectionMode])
+  }, [wsUrl, wsPassword, remoteUrl, joinCode, autoJoinCode, showToast, connected])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
@@ -767,7 +746,12 @@ export function OBSController() {
                     <span className="hidden sm:inline">CONNECTING</span>
                   </>
                 ) : connected ? (
-                  connectionMode === "remote" ? (
+                  connectionMode === "bridge" ? (
+                    <>
+                      <Wifi className="h-3 w-3 text-purple-400" />
+                      <span className="hidden sm:inline text-purple-400">BRIDGE</span>
+                    </>
+                  ) : connectionMode === "remote" ? (
                     <>
                       <Wifi className="h-3 w-3" />
                       <span className="hidden sm:inline">REMOTE</span>
