@@ -16,9 +16,15 @@ agent
 *.exe
 *.bin
 /proxy/bin/
+/proxy/dockforlife-proxy*
 .DS_Store
 *.test
 *.out
+
+# Go
+*.o
+*.a
+*.so
 
 # Logs
 *.log

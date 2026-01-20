@@ -463,6 +463,9 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 		"d":  requestData,
 	}
 
+	requestJSON, _ := json.Marshal(request)
+	fmt.Printf("[OBS] Sending: %s\n", string(requestJSON))
+
 	a.mu.Lock()
 	err := obs.WriteJSON(request)
 	a.mu.Unlock()
