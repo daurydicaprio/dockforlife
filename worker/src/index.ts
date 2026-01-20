@@ -73,7 +73,6 @@ function handleWebSocket(request: Request): Response {
     const pair = new WebSocketPair()
     const [clientSocket, serverSocket] = [pair[0], pair[1]]
     
-    serverSocket.accept()
     console.log(`[Worker] Accepted: code=${code}`)
 
     const state: SocketState = {
