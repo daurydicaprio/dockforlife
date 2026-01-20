@@ -1003,6 +1003,7 @@ export function OBSController() {
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
+          aria-describedby="onboarding-description"
         >
           <DialogHeader>
             <div className="flex items-center justify-center mb-4">
@@ -1012,6 +1013,9 @@ export function OBSController() {
               Bienvenido a DOCK<span className="text-blue-500">FORLIFE</span>
             </DialogTitle>
           </DialogHeader>
+          <div id="onboarding-description" className="sr-only">
+            Modal de bienvenida para nuevos usuarios de DockForLife
+          </div>
           <div className="space-y-4 py-4">
             <p className={cn("text-sm text-center", isDark ? "text-zinc-400" : "text-zinc-600")}>
               Controla OBS desde cualquier dispositivo en tu red local
@@ -1096,6 +1100,7 @@ export function OBSController() {
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
+          aria-describedby="security-description"
         >
           <DialogHeader>
             <div className="flex items-center justify-center mb-4">
@@ -1105,6 +1110,9 @@ export function OBSController() {
             </div>
             <DialogTitle className="text-center text-xl">Seguridad y Privacidad</DialogTitle>
           </DialogHeader>
+          <div id="security-description" className="sr-only">
+            Información sobre seguridad y privacidad de DockForLife
+          </div>
           <div className="space-y-4 py-4">
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -1179,10 +1187,14 @@ export function OBSController() {
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
+          aria-describedby="button-config-description"
         >
           <DialogHeader>
             <DialogTitle>Configurar boton</DialogTitle>
           </DialogHeader>
+          <div id="button-config-description" className="sr-only">
+            Modal para configurar las propiedades del botón del deck
+          </div>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="label">Etiqueta</Label>
@@ -1333,6 +1345,9 @@ export function OBSController() {
           <DialogHeader>
             <DialogTitle>{isClientMode ? strings.agent.title : strings.settings.title}</DialogTitle>
           </DialogHeader>
+          <div id="settings-description" className="sr-only">
+            Configuración de conexión OBS y modo remoto
+          </div>
           
           {isClientMode ? (
             <div className="space-y-6 py-4">

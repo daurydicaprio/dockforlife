@@ -127,13 +127,26 @@ function handleWebSocket(request: Request): Response {
             })
 
             console.log(`[Worker] Sending peer_connected to client...`)
-            state.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
+            try {
+              state.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
+              console.log(`[Worker] ✓ peer_connected sent to client`)
+            } catch (err) {
+              console.log(`[Worker] ✗ Failed to send to client: ${err}`)
+            }
             
             console.log(`[Worker] Sending peer_connected to host...`)
-            peer.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
+            try {
+              peer.socket.send(JSON.stringify({ type: "peer_connected", code: state.joinCode }))
+              console.log(`[Worker] ✓ peer_connected sent to host`)
+            } catch (err) {
+              console.log(`[Worker] ✗ Failed to send to host: ${err}`)
+            }
 
             console.log(`[Worker] Sending connected to client...`)
-            state.socket.send(JSON.stringify({ type: "connected", code: state.joinCode }))
+            try {
+              state.socket.send(JSON.stringify({ type: "connected", code: state.joinCode }))
+              console.log(`[Worker] ✓ connected sent to client`)
+            } catch (err) {}
 
             roomManager.set(state.joinCode, state)
             console.log(`[Worker] SUCCESS: paired for ${state.joinCode}`)
