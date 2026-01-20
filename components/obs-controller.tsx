@@ -383,6 +383,12 @@ export function OBSController() {
             )
             setSettingsOpen(false)
             setModalOpen(false)
+          } else if (data.type === "obs_status") {
+            setObsData((prev) => ({
+              ...prev,
+              rec: data.rec,
+              str: data.str,
+            }))
           } else if (data.type === "error") {
             console.error("[Worker] Error:", data.message)
             showToast(data.message || strings.toasts.connectionError, "error")
@@ -493,40 +499,56 @@ export function OBSController() {
   }, [])
 
   useEffect(() => {
-    if (!connected || !obsRef.current) return
+    if (!connected) return
 
-    const syncStates = async () => {
-      try {
-        const obs = obsRef.current
-        if (!obs) return
+    let interval: ReturnType<typeof setInterval>
 
-        const [recStatus, streamStatus] = await Promise.all([obs.call("GetRecordStatus"), obs.call("GetStreamStatus")])
+    if (connectionMode === "remote" && isRemoteConnected) {
+      const syncRemoteStates = async () => {
+        try {
+          if (workerRef.current?.readyState !== WebSocket.OPEN) return
 
-        setObsData((prev) => ({
-          ...prev,
-          rec: recStatus.outputActive,
-          str: streamStatus.outputActive,
-        }))
+          workerRef.current.send(JSON.stringify({ type: "request_status" }))
+        } catch {}
+      }
 
-        const newMuteStates: Record<string, boolean> = {}
-        for (const btn of deck) {
-          if (btn.type === "Mute" && btn.target) {
-            try {
-              const { inputMuted } = await obs.call("GetInputMute", {
-                inputName: btn.target,
-              })
-              newMuteStates[btn.target] = inputMuted
-            } catch {}
+      interval = setInterval(syncRemoteStates, 2000)
+    } else if (obsRef.current && connectionMode === "local") {
+      const syncStates = async () => {
+        try {
+          const obs = obsRef.current
+          if (!obs) return
+
+          const [recStatus, streamStatus] = await Promise.all([obs.call("GetRecordStatus"), obs.call("GetStreamStatus")])
+
+          setObsData((prev) => ({
+            ...prev,
+            rec: recStatus.outputActive,
+            str: streamStatus.outputActive,
+          }))
+
+          const newMuteStates: Record<string, boolean> = {}
+          for (const btn of deck) {
+            if (btn.type === "Mute" && btn.target) {
+              try {
+                const { inputMuted } = await obs.call("GetInputMute", {
+                  inputName: btn.target,
+                })
+                newMuteStates[btn.target] = inputMuted
+              } catch {}
+            }
           }
-        }
-        setMuteStates(newMuteStates)
-      } catch {}
+          setMuteStates(newMuteStates)
+        } catch {}
+      }
+
+      interval = setInterval(syncStates, 1500)
     }
 
-    syncStates()
-    const interval = setInterval(syncStates, 1500)
-    return () => clearInterval(interval)
-  }, [connected, deck])
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [connected, connectionMode, isRemoteConnected, deck])
 
   const execute = useCallback(
     async (btn: DeckButton) => {
