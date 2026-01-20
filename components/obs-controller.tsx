@@ -294,6 +294,8 @@ export function OBSController() {
 
     try {
       const fullUrl = `${workerUrl}?code=${code}&role=client`
+      console.log(`[DEBUG] WebSocket Intent: ${fullUrl}`)
+      
       const ws = new WebSocket(fullUrl)
 
       ws.onopen = () => {
@@ -337,7 +339,8 @@ export function OBSController() {
       workerRef.current = ws
 
     } catch (error) {
-      console.error(`[Worker] Connection failed:`, error)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error(`[Worker] Connection failed: ${errorMsg}`)
       setIsConnecting(false)
       showToast(strings.toasts.connectionError, "error")
     }
