@@ -179,6 +179,8 @@ export function OBSController() {
   const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none" | "dual" | "bridge">("none")
   const [autoJoinCode, setAutoJoinCode] = useState<string>("")
   const [isMobile, setIsMobile] = useState(false)
+  const [isClientMode, setIsClientMode] = useState(false)
+  const [remoteWaitingForAgent, setRemoteWaitingForAgent] = useState(false)
   const [remoteConnectionFailed, setRemoteConnectionFailed] = useState(false)
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
@@ -230,7 +232,8 @@ export function OBSController() {
     const platform = navigator.platform.toLowerCase()
     const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent)
     setIsMobile(isMobileDevice)
-    
+    setIsClientMode(isMobileDevice)
+
     if (platform.includes("win")) {
       setUserOS("windows")
     } else if (platform.includes("mac") || platform.includes("darwin")) {
@@ -290,6 +293,70 @@ export function OBSController() {
       console.log(`[Agent] Local agent not running on port 4456`)
     }
   }, [])
+
+  const connectToWorker = useCallback(async () => {
+    const workerUrl = getWorkerUrl()
+    const code = joinCode.trim().toUpperCase()
+    
+    if (!code) {
+      showToast(strings.toasts.codeExpired, "error")
+      return
+    }
+
+    console.log(`[Worker] Connecting to ${workerUrl}?code=${code}`)
+
+    setIsConnecting(true)
+    setRemoteWaitingForAgent(false)
+
+    try {
+      const fullUrl = `${workerUrl}?code=${code}&type=client`
+      const ws = new WebSocket(fullUrl)
+
+      ws.onopen = () => {
+        console.log(`[Worker] Connected, waiting for host...`)
+      }
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        console.log(`[Worker] Received: ${data.type}`)
+
+        if (data.type === "waiting") {
+          setRemoteWaitingForAgent(true)
+          setIsConnecting(false)
+        } else if (data.type === "connected" || data.type === "peer_connected") {
+          setRemoteWaitingForAgent(false)
+          setIsRemoteConnected(true)
+          setConnected(true)
+          setConnectionMode("remote")
+          setIsConnecting(false)
+          showToast(strings.toasts.connected, "success")
+        } else if (data.type === "obs_event") {
+          console.log(`[Worker] OBS event received`)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error(`[Worker] WebSocket error:`, error)
+        setIsConnecting(false)
+        showToast(strings.toasts.connectionError, "error")
+      }
+
+      ws.onclose = () => {
+        console.log(`[Worker] Disconnected`)
+        setIsRemoteConnected(false)
+        if (!connected) {
+          setConnected(false)
+        }
+      }
+
+      obsRef.current = ws as unknown as OBSWebSocket
+
+    } catch (error) {
+      console.error(`[Worker] Connection failed:`, error)
+      setIsConnecting(false)
+      showToast(strings.toasts.connectionError, "error")
+    }
+  }, [joinCode, showToast, strings, connected])
 
   const connectOBS = useCallback(async () => {
     const currentRemoteMode = isRemoteModeRef.current
@@ -1288,241 +1355,296 @@ export function OBSController() {
           aria-describedby="settings-description"
         >
           <DialogHeader>
-            <DialogTitle>{strings.settings.title}</DialogTitle>
+            <DialogTitle>{isClientMode ? strings.agent.title : strings.settings.title}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
-              <Label htmlFor="ws-url">{strings.settings.wsUrl}</Label>
-              <Input
-                id="ws-url"
-                value={wsUrl}
-                onChange={(e) => setWsUrl(e.target.value)}
-                placeholder={strings.settings.wsUrlPlaceholder}
-                disabled={isRemoteMode}
-                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
-              />
-              <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                {strings.settings.wsUrlHint}
-              </p>
-            </div>
+          
+          {isClientMode ? (
+            <div className="space-y-6 py-4">
+              <div className="text-center space-y-2">
+                <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-zinc-600")}>
+                  {strings.agent.desc}
+                </p>
+              </div>
 
-            <div className={cn("space-y-2", !isRemoteMode && "opacity-50")}>
-              <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
-              <div className="flex gap-2">
+              <div className="space-y-4">
+                <Label htmlFor="client-join-code" className="text-center block text-lg font-medium">
+                  {strings.settings.joinCode}
+                </Label>
                 <Input
-                  id="join-code"
-                  value={isRemoteMode ? autoJoinCode || joinCode : joinCode}
-                  onChange={(e) => {
-                    setJoinCode(e.target.value)
-                    setAutoJoinCode("")
-                  }}
+                  id="client-join-code"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder={strings.settings.joinCodePlaceholder}
-                  disabled={!isRemoteMode}
-                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "opacity-50 cursor-not-allowed")}
+                  maxLength={12}
+                  className={cn(
+                    "text-center text-xl font-mono tracking-widest py-6",
+                    isDark ? "bg-zinc-800 border-zinc-700" : ""
+                  )}
                 />
-                {isRemoteMode && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      const code = generateJoinCode()
-                      setAutoJoinCode(code)
-                      setJoinCode(code)
-                      navigator.clipboard.writeText(code)
-                      sendCodeToAgent(code)
-                      showToast(strings.toasts.codeGenerated, "success")
-                      console.log(`[UI] Auto-generated join code: ${code}`)
+              </div>
+
+              <Button
+                size="lg"
+                className="w-full py-6 text-lg"
+                disabled={joinCode.length < 4 || isConnecting}
+                onClick={() => {
+                  setIsRemoteMode(true)
+                  connectToWorker()
+                }}
+              >
+                {isConnecting ? strings.settings.connecting : strings.settings.button}
+              </Button>
+
+              {remoteWaitingForAgent && (
+                <div className={cn("p-4 rounded-lg text-center", isDark ? "bg-amber-500/10" : "bg-amber-50")}>
+                  <p className={cn("text-sm", isDark ? "text-amber-400" : "text-amber-700")}>
+                    {strings.toasts.agentNotRunning}
+                  </p>
+                </div>
+              )}
+
+              {connected && (
+                <div className={cn("p-4 rounded-lg text-center", isDark ? "bg-green-500/10" : "bg-green-50")}>
+                  <p className={cn("text-sm font-medium", isDark ? "text-green-400" : "text-green-700")}>
+                    {strings.toasts.connected}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
+                <Label htmlFor="ws-url">{strings.settings.wsUrl}</Label>
+                <Input
+                  id="ws-url"
+                  value={wsUrl}
+                  onChange={(e) => setWsUrl(e.target.value)}
+                  placeholder={strings.settings.wsUrlPlaceholder}
+                  disabled={isRemoteMode}
+                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
+                />
+                <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                  {strings.settings.wsUrlHint}
+                </p>
+              </div>
+
+              <div className={cn("space-y-2", !isRemoteMode && "opacity-50")}>
+                <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="join-code"
+                    value={isRemoteMode ? autoJoinCode || joinCode : joinCode}
+                    onChange={(e) => {
+                      setJoinCode(e.target.value)
+                      setAutoJoinCode("")
                     }}
-                    className="shrink-0"
+                    placeholder={strings.settings.joinCodePlaceholder}
+                    disabled={!isRemoteMode}
+                    className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "opacity-50 cursor-not-allowed")}
+                  />
+                  {isRemoteMode && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const code = generateJoinCode()
+                        setAutoJoinCode(code)
+                        setJoinCode(code)
+                        navigator.clipboard.writeText(code)
+                        sendCodeToAgent(code)
+                        showToast(strings.toasts.codeGenerated, "success")
+                        console.log(`[UI] Auto-generated join code: ${code}`)
+                      }}
+                      className="shrink-0"
+                    >
+                      {strings.settings.generateCode}
+                    </Button>
+                  )}
+                </div>
+                {isRemoteMode && autoJoinCode && (
+                  <div className={cn("p-3 rounded-lg text-center font-mono text-lg tracking-wider", isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-50 text-blue-600")}>
+                    {autoJoinCode}
+                  </div>
+                )}
+                  <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                    {isRemoteMode ? strings.settings.shareCode : strings.settings.joinCodeHint}
+                  </p>
+              </div>
+              <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
+                <Label htmlFor="ws-pass">{strings.settings.password}</Label>
+                <Input
+                  id="ws-pass"
+                  type="password"
+                  value={wsPassword}
+                  onChange={(e) => setWsPassword(e.target.value)}
+                  placeholder={strings.settings.passwordPlaceholder}
+                  disabled={isRemoteMode}
+                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
+                />
+              </div>
+
+              <div
+                className={cn(
+                  "flex items-center justify-between p-3 rounded-lg border",
+                  isRemoteMode
+                    ? isDark
+                      ? "bg-blue-500/10 border-blue-500/30"
+                      : "bg-blue-50 border-blue-200"
+                    : isDark
+                      ? "bg-zinc-800/50 border-zinc-700"
+                      : "bg-zinc-50 border-zinc-200",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "flex items-center justify-center w-10 h-10 rounded-full",
+                      isRemoteMode
+                        ? "bg-blue-500/20"
+                        : isDark
+                          ? "bg-zinc-700"
+                          : "bg-zinc-200",
+                    )}
                   >
-                    {strings.settings.generateCode}
+                    <Globe className={cn("h-5 w-5", isRemoteMode ? "text-blue-400" : isDark ? "text-zinc-500" : "text-zinc-400")} />
+                  </div>
+                  <div>
+                    <Label htmlFor="remote-mode" className="cursor-pointer">
+                      {strings.settings.remoteMode}
+                    </Label>
+                    <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                      {isRemoteMode ? strings.settings.remoteModeDesc : strings.settings.localModeDesc}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  id="remote-mode"
+                  onClick={async () => {
+                    const newValue = !isRemoteMode
+                    setIsRemoteMode(newValue)
+                    localStorage.setItem("dfl_remote_mode", String(newValue))
+                    console.log(`[UI] Remote mode ${newValue ? "enabled" : "disabled"}`)
+                    
+                    if (connected) {
+                      console.log(`[UI] Resetting connection due to mode change...`)
+                      if (obsRef.current) {
+                        try {
+                          await obsRef.current.disconnect()
+                        } catch {}
+                        obsRef.current = null
+                      }
+                      setConnected(false)
+                      setConnectionMode("none")
+                      showToast(newValue ? "Switched to Remote Mode" : "Switched to Local Mode", "success")
+                    }
+                  }}
+                  className={cn(
+                    "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                    isRemoteMode ? "bg-blue-500" : "bg-zinc-600",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
+                      isRemoteMode ? "translate-x-6" : "translate-x-1",
+                    )}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{strings.settings.language}</Label>
+                <Select
+                  value={lang}
+                  onValueChange={(value: Language) => {
+                    setLang(value)
+                    setStrings(getLocaleStrings(value))
+                    localStorage.setItem("dfl_lang", value)
+                    showToast(strings.toasts.langChanged, "success")
+                  }}
+                >
+                  <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">
+                      <span className="flex items-center gap-2">
+                        <span className="text-lg">🇺🇸</span> {strings.settings.languageEn}
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="es">
+                      <span className="flex items-center gap-2">
+                        <span className="text-lg">🇪🇸</span> {strings.settings.languageEs}
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div
+                className={cn(
+                  "rounded-lg p-4 border",
+                  isDark ? "bg-zinc-800/50 border-zinc-700" : "bg-zinc-50 border-zinc-200",
+                )}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Monitor className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-600")} />
+                  <h3 className="font-semibold text-sm">{strings.settings.desktopAgent}</h3>
+                </div>
+                <p className={cn("text-xs mb-3", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                  {strings.settings.desktopAgentDesc}
+                </p>
+                {userOS !== "other" && (
+                  <Button
+                    size="sm"
+                    onClick={() => window.open(getGitHubReleaseUrl(), "_blank")}
+                    className="w-full"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {strings.settings.download} {userOS === "linux" ? "Linux" : userOS === "macos" ? "macOS" : "Windows"}
                   </Button>
                 )}
               </div>
-              {isRemoteMode && autoJoinCode && (
-                <div className={cn("p-3 rounded-lg text-center font-mono text-lg tracking-wider", isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-50 text-blue-600")}>
-                  {autoJoinCode}
-                </div>
-              )}
-                <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                  {isRemoteMode ? strings.settings.shareCode : strings.settings.joinCodeHint}
-                </p>
-            </div>
-            <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
-              <Label htmlFor="ws-pass">{strings.settings.password}</Label>
-              <Input
-                id="ws-pass"
-                type="password"
-                value={wsPassword}
-                onChange={(e) => setWsPassword(e.target.value)}
-                placeholder={strings.settings.passwordPlaceholder}
-                disabled={isRemoteMode}
-                className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
-              />
-            </div>
 
-            <div
-              className={cn(
-                "flex items-center justify-between p-3 rounded-lg border",
-                isRemoteMode
-                  ? isDark
-                    ? "bg-blue-500/10 border-blue-500/30"
-                    : "bg-blue-50 border-blue-200"
-                  : isDark
-                    ? "bg-zinc-800/50 border-zinc-700"
-                    : "bg-zinc-50 border-zinc-200",
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "flex items-center justify-center w-10 h-10 rounded-full",
-                    isRemoteMode
-                      ? "bg-blue-500/20"
-                      : isDark
-                        ? "bg-zinc-700"
-                        : "bg-zinc-200",
-                  )}
-                >
-                  <Globe className={cn("h-5 w-5", isRemoteMode ? "text-blue-400" : isDark ? "text-zinc-500" : "text-zinc-400")} />
-                </div>
-                <div>
-                  <Label htmlFor="remote-mode" className="cursor-pointer">
-                    {strings.settings.remoteMode}
-                  </Label>
-                  <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    {isRemoteMode ? strings.settings.remoteModeDesc : strings.settings.localModeDesc}
-                  </p>
-                </div>
-              </div>
-              <button
-                id="remote-mode"
-                onClick={async () => {
-                  const newValue = !isRemoteMode
-                  setIsRemoteMode(newValue)
-                  localStorage.setItem("dfl_remote_mode", String(newValue))
-                  console.log(`[UI] Remote mode ${newValue ? "enabled" : "disabled"}`)
-                  
-                  if (connected) {
-                    console.log(`[UI] Resetting connection due to mode change...`)
-                    if (obsRef.current) {
-                      try {
-                        await obsRef.current.disconnect()
-                      } catch {}
-                      obsRef.current = null
-                    }
-                    setConnected(false)
-                    setConnectionMode("none")
-                    showToast(newValue ? "Switched to Remote Mode" : "Switched to Local Mode", "success")
-                  }
-                }}
+              <div
                 className={cn(
-                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
-                  isRemoteMode ? "bg-blue-500" : "bg-zinc-600",
+                  "rounded-lg p-4 border",
+                  connected
+                    ? isDark
+                      ? "bg-green-500/10 border-green-500/30"
+                      : "bg-green-50 border-green-200"
+                    : isDark
+                      ? "bg-zinc-800/50 border-zinc-700"
+                      : "bg-zinc-50 border-zinc-200",
                 )}
               >
-                <span
-                  className={cn(
-                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
-                    isRemoteMode ? "translate-x-6" : "translate-x-1",
+                <div className="flex items-center gap-2">
+                  {connected ? (
+                    <>
+                      <CheckCircle2 className={cn("h-4 w-4", isDark ? "text-green-400" : "text-green-600")} />
+                      <span className={cn("text-sm font-medium", isDark ? "text-green-400" : "text-green-600")}>
+                        {strings.settings.status.connected}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className={cn("h-4 w-4", isDark ? "text-zinc-500" : "text-zinc-400")} />
+                      <span className={cn("text-sm", isDark ? "text-zinc-400" : "text-zinc-600")}>
+                        {strings.settings.status.notConnected}
+                      </span>
+                    </>
                   )}
-                />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{strings.settings.language}</Label>
-              <Select
-                value={lang}
-                onValueChange={(value: Language) => {
-                  setLang(value)
-                  setStrings(getLocaleStrings(value))
-                  localStorage.setItem("dfl_lang", value)
-                  showToast(strings.toasts.langChanged, "success")
-                }}
-              >
-                <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">
-                    <span className="flex items-center gap-2">
-                      <span className="text-lg">🇺🇸</span> {strings.settings.languageEn}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="es">
-                    <span className="flex items-center gap-2">
-                      <span className="text-lg">🇪🇸</span> {strings.settings.languageEs}
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div
-              className={cn(
-                "rounded-lg p-4 border",
-                isDark ? "bg-zinc-800/50 border-zinc-700" : "bg-zinc-50 border-zinc-200",
-              )}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Monitor className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-600")} />
-                <h3 className="font-semibold text-sm">{strings.settings.desktopAgent}</h3>
-              </div>
-              <p className={cn("text-xs mb-3", isDark ? "text-zinc-400" : "text-zinc-600")}>
-                {strings.settings.desktopAgentDesc}
-              </p>
-              <div className="space-y-2">
-                <a
-                  href={getGitHubReleaseUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    "flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium transition-colors",
-                    isDark
-                      ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                      : "bg-blue-100 text-blue-600 hover:bg-blue-200",
-                  )}
-                >
-                  <Download className="h-4 w-4" />
-                  {strings.settings.download}
-                </a>
-                <p className={cn("text-xs text-center", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                  {strings.settings.agentNote}
-                </p>
+                </div>
               </div>
             </div>
-
-            <div
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm",
-                connected
-                  ? isDark
-                    ? "bg-green-500/10 text-green-400"
-                    : "bg-green-100 text-green-600"
-                  : isDark
-                    ? "bg-zinc-800 text-zinc-400"
-                    : "bg-zinc-100 text-zinc-600",
-              )}
-            >
-              {connected ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  {strings.settings.status.connected}
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-4 w-4" />
-                  {strings.settings.status.notConnected}
-                </>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={connectOBS} className="w-full" disabled={isConnecting}>
-              {isConnecting ? strings.settings.connecting : connected ? strings.settings.button : strings.settings.button}
-            </Button>
-          </DialogFooter>
+          )}
+          {!isClientMode && (
+            <DialogFooter>
+              <Button onClick={connectOBS} className="w-full" disabled={isConnecting}>
+                {isConnecting ? strings.settings.connecting : connected ? strings.settings.button : strings.settings.button}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
