@@ -63,7 +63,10 @@ export class RelaySession {
           const data = e.data as string
           const parsed = JSON.parse(data)
 
-          if (parsed.type === "register") {
+          const msgType = parsed.type || "unknown"
+          console.log(`[Relay] ${this.code} received: ${msgType}`)
+
+          if (msgType === "register") {
             if (isHost) {
               this.hostRegistered = true
             } else {
@@ -83,10 +86,29 @@ export class RelaySession {
             return
           }
 
+          if (msgType === "request_update") {
+            const peer = isHost ? this.clientSocket : this.hostSocket
+            if (peer && peer.readyState === WebSocket.OPEN) {
+              peer.send(data)
+              console.log(`[Relay] Forwarded request_update`)
+            }
+            return
+          }
+
+          if (msgType === "obs_data") {
+            const peer = isHost ? this.clientSocket : this.hostSocket
+            if (peer && peer.readyState === WebSocket.OPEN) {
+              peer.send(data)
+              console.log(`[Relay] Forwarded obs_data (${parsed.scenes?.length || 0} scenes)`)
+            }
+            return
+          }
+
           if (this.hostRegistered && this.clientRegistered) {
             const peer = isHost ? this.clientSocket : this.hostSocket
             if (peer && peer.readyState === WebSocket.OPEN) {
               peer.send(data)
+              console.log(`[Relay] Forwarded ${msgType}`)
             }
           }
         } catch (err) {
@@ -95,6 +117,7 @@ export class RelaySession {
       })
 
       serverSocket.addEventListener("close", () => {
+        console.log(`[Relay] Disconnected: ${this.code} (${role})`)
         if (isHost) {
           this.hostSocket = null
           this.hostRegistered = false

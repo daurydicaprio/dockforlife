@@ -311,8 +311,8 @@ export function OBSController() {
 
       ws.onmessage = (event) => {
         const rawData = event.data as string
-        console.log(`[Worker] Raw message received: ${rawData}`)
-        
+        console.log(`[Worker] Mensaje recibido del Worker: ${rawData}`)
+
         let data
         try {
           data = JSON.parse(rawData)
@@ -320,15 +320,15 @@ export function OBSController() {
           console.error(`[Worker] Failed to parse message: ${e}`)
           return
         }
-        
-        console.log(`[Worker] Parsed message: type=${data.type}, code=${data.code || 'N/A'}`)
+
+        console.log(`[Worker] Processed: type=${data.type}`)
 
         if (data.type === "waiting") {
           console.log(`[Worker] Waiting for host...`)
           setRemoteWaitingForAgent(true)
           setIsConnecting(false)
         } else if (data.type === "peer_connected") {
-          console.log(`[Worker] SUCCESS: paired`)
+          console.log(`[Worker] SUCCESS: paired, requesting update...`)
           setRemoteWaitingForAgent(false)
           setIsRemoteConnected(true)
           setConnected(true)
@@ -336,8 +336,12 @@ export function OBSController() {
           setIsConnecting(false)
           setSettingsOpen(false)
           showToast(strings.toasts.connected, "success")
+          ws.send(JSON.stringify({ type: "request_update" }))
+          console.log(`[Worker] request_update sent`)
         } else if (data.type === "obs_data") {
           console.log(`[Worker] OBS data received: ${data.scenes?.length || 0} scenes, ${data.inputs?.length || 0} inputs`)
+          console.log(`[Worker] scenes: ${JSON.stringify(data.scenes)}`)
+          console.log(`[Worker] inputs: ${JSON.stringify(data.inputs)}`)
           setHasOBSData(true)
           setObsData((prev) => ({
             ...prev,
@@ -351,6 +355,8 @@ export function OBSController() {
           console.error(`[Worker] Error from server: ${data.message}`)
           showToast(data.message || strings.toasts.connectionError, "error")
           setIsConnecting(false)
+        } else {
+          console.log(`[Worker] Unknown message type: ${data.type}`)
         }
       }
 
