@@ -251,9 +251,12 @@ func (a *Agent) handleOBSMessages() {
 				var respData map[string]interface{}
 				json.Unmarshal(msg.D, &respData)
 				requestId, _ := respData["requestId"].(string)
+				requestType, _ := respData["requestType"].(string)
 
 				if errorMsg, ok := respData["error"].(string); ok {
-					fmt.Printf("[OBS] Error response for %s: %s\n", requestId, errorMsg)
+					fmt.Printf("[OBS] ERROR: %s para %s: %s\n", requestType, requestId, errorMsg)
+				} else if comment, ok := respData["comment"].(string); ok {
+					fmt.Printf("[OBS] OK: %s %s - %s\n", requestType, requestId, comment)
 				}
 
 				if ch, ok := a.getPendingRequest(requestId); ok {
@@ -333,6 +336,9 @@ func (a *Agent) sendOBSData() {
 
 	scenes, _ := a.callOBS("GetSceneList")
 	inputs, _ := a.callOBS("GetInputList")
+
+	fmt.Printf("[OBS] Inputs disponibles: %v\n", inputs)
+	fmt.Printf("[OBS] Escenas disponibles: %v\n", scenes)
 
 	if len(scenes) == 0 && len(inputs) == 0 {
 		return
