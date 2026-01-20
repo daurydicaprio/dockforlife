@@ -277,23 +277,6 @@ export function OBSController() {
     }, 5000)
   }, [])
 
-  const sendCodeToAgent = useCallback(async (code: string) => {
-    try {
-      const response = await fetch("http://127.0.0.1:4456/set-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      })
-      if (response.ok) {
-        console.log(`[Agent] Join code sent to local agent: ${code}`)
-      } else {
-        console.log(`[Agent] Failed to send code to local agent`)
-      }
-    } catch (error) {
-      console.log(`[Agent] Local agent not running on port 4456`)
-    }
-  }, [])
-
   const connectToWorker = useCallback(async () => {
     const workerUrl = getWorkerUrl()
     const code = joinCode.trim().toUpperCase()
@@ -1451,7 +1434,6 @@ export function OBSController() {
                         setAutoJoinCode(code)
                         setJoinCode(code)
                         navigator.clipboard.writeText(code)
-                        sendCodeToAgent(code)
                         showToast(strings.toasts.codeGenerated, "success")
                         console.log(`[UI] Auto-generated join code: ${code}`)
                       }}
