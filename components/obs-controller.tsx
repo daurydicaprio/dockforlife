@@ -521,7 +521,7 @@ export function OBSController() {
         } catch {}
       }
 
-      interval = setInterval(syncRemoteStates, 2000)
+      interval = setInterval(syncRemoteStates, 5000)
     } else if (obsRef.current && connectionMode === "local") {
       const syncStates = async () => {
         try {
