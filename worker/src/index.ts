@@ -63,7 +63,7 @@ function handleWebSocket(request: Request): Response {
   try {
     const pair = new WebSocketPair()
     const [clientSocket, serverSocket] = [pair[0], pair[1]]
-    
+
     serverSocket.accept()
     console.log(`[Worker] Socket accepted: code=${code}, role=${role}`)
 
@@ -81,13 +81,13 @@ function handleWebSocket(request: Request): Response {
         console.log(`[Worker] Raw message: ${rawData.substring(0, 100)}`)
 
         const data = JSON.parse(rawData)
-        console.log(`[Worker] Parsed: type=${data.type}, code=${data.code || code}, role=${data.role || role}`)
+        console.log(`[Worker] Parsed: type=${data.type}, code=${data.code || code}`)
 
         if (data.type === "register") {
           state.joinCode = normalizeCode(data.code || data.joinCode || code)
           state.role = data.role || role
           
-          console.log(`[Worker] Registering: code=${state.joinCode}, role=${state.role}`)
+          console.log(`[Worker] Register: code=${state.joinCode}, role=${state.role}`)
 
           const peer = roomManager.get(state.joinCode)
 
@@ -99,7 +99,7 @@ function handleWebSocket(request: Request): Response {
               return
             }
 
-            console.log(`[Worker] Pairing ${state.joinCode}: ${state.role} <-> ${peer.role}`)
+            console.log(`[Worker] Pairing: ${state.joinCode}`)
 
             peer.socket.addEventListener("message", (ev: MessageEvent) => {
               try { state.socket.send(ev.data) } catch {}
@@ -153,7 +153,7 @@ function handleWebSocket(request: Request): Response {
       }
     })
 
-    return new Response(null, { status: 101, webSocket: serverSocket })
+    return new Response(null, { status: 101, webSocket: clientSocket })
 
   } catch (error) {
     console.error(`[Worker] Setup failed: ${error}`)
