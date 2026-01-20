@@ -251,6 +251,11 @@ func (a *Agent) handleOBSMessages() {
 				var respData map[string]interface{}
 				json.Unmarshal(msg.D, &respData)
 				requestId, _ := respData["requestId"].(string)
+
+				if errorMsg, ok := respData["error"].(string); ok {
+					fmt.Printf("[OBS] Error response for %s: %s\n", requestId, errorMsg)
+				}
+
 				if ch, ok := a.getPendingRequest(requestId); ok {
 					select {
 					case ch <- msg.D:
