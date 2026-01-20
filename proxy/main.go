@@ -317,8 +317,10 @@ func (a *Agent) handleWorkerMessages() {
 				}
 			case "peer_connected":
 				fmt.Printf("[Worker] Client connected, fetching OBS data...\n")
+				time.Sleep(500 * time.Millisecond)
 				a.sendOBSData()
 			case "request_update":
+				time.Sleep(200 * time.Millisecond)
 				a.sendOBSData()
 			}
 		}

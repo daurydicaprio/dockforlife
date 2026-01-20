@@ -1,70 +1,139 @@
 # DockForLife
 
-Professional OBS remote control with Zero Configuration.
+Professional OBS Remote Control with Zero Configuration.
 
-## Overview
+## 🏗️ Architecture
 
-DockForLife is a web-based OBS Studio controller that enables seamless remote control from any device on your local network. Built with Next.js and Cloudflare Workers.
+```
+┌─────────────────┐     ┌───────────────────┐     ┌─────────────────┐
+│   Browser/      │────>│  Cloudflare       │────>│  Go Agent       │
+│   Mobile Device │     │  Worker (Relay)   │     │  (Local Host)   │
+└─────────────────┘     └───────────────────┘     └─────────────────┘
+        │                                               │
+        │                                               ▼
+        │                                         ┌───────────┐
+        └─────────────────────────────────────────│ OBS Studio│
+                                                  └───────────┘
+```
 
-### Key Features
+## 🚀 Quick Start
 
-- **Magic Handshake**: Automatic Join Code generation - no manual configuration
-- **Dual-Mode**: Maintain local OBS connection while using remote features
-- **Bilingual**: Automatic English/Spanish detection based on browser language
-- **Zero Config**: Fixed worker URL, no user input required
-- **Privacy-First**: 100% local data storage, no external data collection
+### Prerequisites
 
-## Quick Start
+- **OBS Studio** with WebSocket Server enabled (Tools → WebSocket Server Settings)
+- **Go 1.21+** (for running the local agent)
+- **Node.js 18+** (for web development)
 
-### 1. Download the Agent
-
-Download the appropriate binary for your system from [GitHub Releases](https://github.com/daurydicaprio/dockforlife/releases):
-
-- **Windows**: `dockforlife-proxy-windows-amd64.exe`
-- **Linux**: `dockforlife-proxy-linux-amd64`
-- **macOS**: `dockforlife-proxy-darwin-*`
-
-### 2. Run the Agent
+### 1. Clone and Setup
 
 ```bash
-# Linux
-chmod +x dockforlife-proxy-linux-amd64
-./dockforlife-proxy-linux-amd64
+git clone https://github.com/daurydicaprio/dockforlife.git
+cd dockforlife
 
-# Windows (Command Prompt)
-dockforlife-proxy-windows-amd64.exe
+# Install web dependencies
+npm install
 
-# macOS
-chmod +x dockforlife-proxy-darwin-amd64
-./dockforlife-proxy-darwin-amd64
+# Install worker dependencies
+cd worker && npm install && cd ..
 ```
 
-### 3. Open the Web App
+### 2. Environment Configuration
 
-Navigate to [https://dockforlife.app](https://dockforlife.app) in your browser.
+#### WebApp (.env.local)
+Copy the example file and customize:
 
-### 4. Connect
-
-1. Click the Settings icon (gear)
-2. Toggle "Remote Mode" to generate a Join Code
-3. Share the code with other devices
-4. Enter the code on the client device to connect
-
-## Architecture
-
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Browser   │────>│  Cloudflare  │────>│  Go Proxy   │
-│   (Web UI)  │     │    Worker    │     │   Agent     │
-└─────────────┘     └──────────────┘     └─────────────┘
-                                                  │
-                                                  ▼
-                                            ┌───────────┐
-                                            │ OBS Studio│
-                                            └───────────┘
+```bash
+cp .env.example .env.local
 ```
 
-## Tech Stack
+**Variables:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_WORKER_URL` | Cloudflare Worker WebSocket URL | Provided worker |
+| `NEXT_PUBLIC_OBS_URL` | Local OBS WebSocket URL | `ws://127.0.0.1:4455` |
+
+#### Agent (proxy/config.json)
+Copy the example file and customize:
+
+```bash
+cp proxy/config.example.json proxy/config.json
+```
+
+**Structure:**
+```json
+{
+  "obs": {
+    "url": "ws://127.0.0.1:4455",
+    "password": "your_obs_password_if_any"
+  },
+  "worker": {
+    "url": "wss://dockforlife-relay.blu-b1d.workers.dev/ws"
+  }
+}
+```
+
+### 3. Run the Agent
+
+#### Arch Linux (AMD64)
+```bash
+cd proxy
+chmod +x dockforlife-agent
+./dockforlife-agent -code=YOURCODE
+```
+
+#### Other Platforms
+```bash
+cd proxy
+make build
+./bin/linux/agent -code=YOURCODE
+```
+
+**Flags:**
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-code` | Join code for pairing | Auto-generated |
+| `-obs` | OBS WebSocket URL | `ws://127.0.0.1:4455` |
+| `-worker` | Worker WebSocket URL | From config |
+
+### 4. Start WebApp
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### 5. Deploy Worker (Optional)
+
+If you want your own relay worker:
+
+```bash
+cd worker
+npx wrangler deploy
+```
+
+## 🔧 Development
+
+### Build Commands
+
+```bash
+# WebApp
+npm run dev      # Development server
+npm run build    # Production build
+npm run start    # Production server
+
+# Agent
+cd proxy
+make build       # Build for all platforms
+make build-linux # Build for Linux only
+
+# Worker
+cd worker
+npx wrangler dev # Local development
+npx wrangler deploy # Deploy to production
+```
+
+## 🎨 Tech Stack
 
 | Layer | Technology |
 |-------|------------|
@@ -74,50 +143,35 @@ Navigate to [https://dockforlife.app](https://dockforlife.app) in your browser.
 | Agent | Go 1.21 |
 | Communication | OBS WebSocket 5.x |
 
-## Development
+## 🛡️ Security
 
-### Prerequisites
+- **100% Local**: All data stored in browser localStorage
+- **No Collection**: No personal data transmitted
+- **Direct Connection**: Connects directly to OBS on local network
+- **Offline Capable**: Works offline once loaded
 
-- Node.js 18+
-- Go 1.21+
-- Cloudflare Wrangler CLI
+## 📱 Usage
 
-### Setup
+1. **Host (PC with OBS)**:
+   - Run the agent: `./dockforlife-agent`
+   - Note the 8-character join code
 
-```bash
-# Clone the repository
-git clone https://github.com/daurydicaprio/dockforlife.git
-cd dockforlife
+2. **Client (Phone/Tablet)**:
+   - Open the web app
+   - Enter the join code
+   - Tap CONNECT
 
-# Install web dependencies
-npm install
+## 🌍 Internationalization
 
-# Install worker dependencies
-cd worker && npm install && cd ..
+DockForLife automatically detects your browser language:
+- **English** (default)
+- **Español** (when `navigator.language` starts with 'es')
 
-# Run development server
-npm run dev
-```
-
-### Deploy Worker
-
-```bash
-cd worker
-npm run deploy
-```
-
-## Security
-
-- All data is stored locally in your browser (localStorage)
-- No personal information is collected or transmitted
-- Direct connection to OBS on your local network
-- Works offline once loaded
-
-## License
+## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## Author
+## 👨‍💻 Author
 
 Made with love by [Daury DiCaprio](https://daurydicaprio.com)
 
