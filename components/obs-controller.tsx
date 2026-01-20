@@ -328,16 +328,7 @@ export function OBSController() {
           setRemoteWaitingForAgent(true)
           setIsConnecting(false)
         } else if (data.type === "peer_connected") {
-          console.log(`[Worker] SUCCESS: paired for ${data.code}`)
-          setRemoteWaitingForAgent(false)
-          setIsRemoteConnected(true)
-          setConnected(true)
-          setConnectionMode("remote")
-          setIsConnecting(false)
-          setSettingsOpen(false)
-          showToast(strings.toasts.connected, "success")
-        } else if (data.type === "connected") {
-          console.log(`[Worker] SUCCESS: connected`)
+          console.log(`[Worker] SUCCESS: paired`)
           setRemoteWaitingForAgent(false)
           setIsRemoteConnected(true)
           setConnected(true)
