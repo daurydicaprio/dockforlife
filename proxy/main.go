@@ -226,7 +226,7 @@ func (a *Agent) handleOBSMessages() {
 					"d": map[string]interface{}{
 						"rpcVersion":         1,
 						"authentication":     "",
-						"eventSubscriptions": 1,
+						"eventSubscriptions": 65, // 1 = base, 64 = input events (for mute status)
 					},
 				}
 				a.mu.Lock()
@@ -385,10 +385,15 @@ func (a *Agent) sendStatusUpdate() {
 		strActive = true
 	}
 
+	desktopMuted, _ := a.callOBSWithParam("GetInputMute", "inputName", "Audio del escritorio")
+	micMuted, _ := a.callOBSWithParam("GetInputMute", "inputName", "Mic/Aux")
+
 	statusData := map[string]interface{}{
 		"type":   "obs_status",
 		"rec":    recActive,
 		"str":    strActive,
+		"mute":   desktopMuted,
+		"mic":    micMuted,
 		"status": "ok",
 	}
 
@@ -397,6 +402,64 @@ func (a *Agent) sendStatusUpdate() {
 
 	if a.workerConn != nil {
 		a.workerConn.WriteJSON(statusData)
+	}
+}
+
+func (a *Agent) callOBSWithParam(requestType string, paramName string, paramValue string) (bool, error) {
+	a.mu.Lock()
+	obs := a.obsConn
+	a.mu.Unlock()
+
+	if obs == nil {
+		return false, fmt.Errorf("no OBS connection")
+	}
+
+	requestId := fmt.Sprintf("req_%d", time.Now().UnixNano())
+
+	requestData := map[string]interface{}{
+		"requestType": requestType,
+		"requestId":   requestId,
+		paramName:     paramValue,
+	}
+
+	request := map[string]interface{}{
+		"op": 6,
+		"d":  requestData,
+	}
+
+	ch := a.addPendingRequest(requestId)
+
+	a.mu.Lock()
+	err := obs.WriteJSON(request)
+	a.mu.Unlock()
+
+	if err != nil {
+		a.removePendingRequest(requestId)
+		return false, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	select {
+	case responseData := <-ch:
+		a.removePendingRequest(requestId)
+
+		var respData map[string]interface{}
+		json.Unmarshal(responseData, &respData)
+
+		responseDataObj, ok := respData["responseData"].(map[string]interface{})
+		if !ok {
+			return false, fmt.Errorf("no responseData")
+		}
+
+		if requestType == "GetInputMute" {
+			if muted, ok := responseDataObj["inputMuted"].(bool); ok {
+				return muted, nil
+			}
+		}
+		return false, nil
+
+	case <-time.After(2 * time.Second):
+		a.removePendingRequest(requestId)
+		return false, fmt.Errorf("timeout")
 	}
 }
 

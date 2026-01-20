@@ -389,6 +389,18 @@ export function OBSController() {
               rec: data.rec,
               str: data.str,
             }))
+            if (typeof data.mute === "boolean") {
+              setMuteStates((prev) => ({
+                ...prev,
+                "Audio del escritorio": data.mute,
+              }))
+            }
+            if (typeof data.mic === "boolean") {
+              setMuteStates((prev) => ({
+                ...prev,
+                "Mic/Aux": data.mic,
+              }))
+            }
           } else if (data.type === "error") {
             console.error("[Worker] Error:", data.message)
             showToast(data.message || strings.toasts.connectionError, "error")
