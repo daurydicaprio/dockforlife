@@ -389,17 +389,14 @@ export function OBSController() {
               rec: data.rec,
               str: data.str,
             }))
-            if (typeof data.mute === "boolean") {
-              setMuteStates((prev) => ({
-                ...prev,
-                "Audio del escritorio": data.mute,
-              }))
-            }
-            if (typeof data.mic === "boolean") {
-              setMuteStates((prev) => ({
-                ...prev,
-                "Mic/Aux": data.mic,
-              }))
+            if (data.muteStates && typeof data.muteStates === "object") {
+              const newMuteStates: Record<string, boolean> = {}
+              for (const [key, value] of Object.entries(data.muteStates)) {
+                if (typeof value === "boolean") {
+                  newMuteStates[key] = value
+                }
+              }
+              setMuteStates(newMuteStates)
             }
           } else if (data.type === "error") {
             console.error("[Worker] Error:", data.message)
