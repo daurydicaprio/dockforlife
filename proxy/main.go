@@ -234,12 +234,9 @@ func (a *Agent) handleOBSMessages() {
 				a.mu.Unlock()
 				if conn != nil {
 					conn.WriteJSON(identifyMsg)
-					fmt.Printf("[OBS] Identify sent\n")
 				}
 			case 2:
 				fmt.Printf("[OBS] Identified successfully\n")
-			case 5:
-				fmt.Printf("[OBS] Event received\n")
 				a.mu.Lock()
 				worker := a.workerConn
 				a.mu.Unlock()
@@ -254,11 +251,9 @@ func (a *Agent) handleOBSMessages() {
 				var respData map[string]interface{}
 				json.Unmarshal(msg.D, &respData)
 				requestId, _ := respData["requestId"].(string)
-				fmt.Printf("[OBS] Response received: requestId=%s\n", requestId)
 				if ch, ok := a.getPendingRequest(requestId); ok {
 					select {
 					case ch <- msg.D:
-						fmt.Printf("[OBS] Response sent to channel for %s\n", requestId)
 					default:
 					}
 				}
@@ -309,14 +304,13 @@ func (a *Agent) handleWorkerMessages() {
 				command, _ := msg["command"].(string)
 				args, _ := msg["args"].(map[string]interface{})
 				if command != "" {
-					fmt.Printf("[Worker] Command: %s with args: %v\n", command, args)
+					fmt.Printf("[Worker] Command: %s\n", command)
 					a.SendCommand(command, args)
 				}
 			case "peer_connected":
-				fmt.Printf("[Worker] Client connected!\n")
+				fmt.Printf("[Worker] Client connected, fetching OBS data...\n")
 				a.sendOBSData()
 			case "request_update":
-				fmt.Printf("[Worker] request_update received\n")
 				a.sendOBSData()
 			}
 		}
@@ -329,28 +323,13 @@ func (a *Agent) sendOBSData() {
 	a.mu.Unlock()
 
 	if obs == nil {
-		fmt.Printf("[OBS] No connection\n")
 		return
 	}
 
-	fmt.Printf("[OBS] Fetching data...\n")
-
-	scenes, err := a.callOBS("GetSceneList")
-	if err != nil {
-		fmt.Printf("[OBS] Failed to get scenes: %v\n", err)
-	} else {
-		fmt.Printf("[OBS] Got %d scenes\n", len(scenes))
-	}
-
-	inputs, err := a.callOBS("GetInputList")
-	if err != nil {
-		fmt.Printf("[OBS] Failed to get inputs: %v\n", err)
-	} else {
-		fmt.Printf("[OBS] Got %d inputs\n", len(inputs))
-	}
+	scenes, _ := a.callOBS("GetSceneList")
+	inputs, _ := a.callOBS("GetInputList")
 
 	if len(scenes) == 0 && len(inputs) == 0 {
-		fmt.Printf("[OBS] No data to send\n")
 		return
 	}
 
@@ -365,13 +344,7 @@ func (a *Agent) sendOBSData() {
 	defer a.mu.Unlock()
 
 	if a.workerConn != nil {
-		jsonData, _ := json.Marshal(obsData)
-		fmt.Printf("[Worker] Sending obs_data: %s\n", string(jsonData))
-		if err := a.workerConn.WriteJSON(obsData); err != nil {
-			fmt.Printf("[Worker] Failed to send: %v\n", err)
-		} else {
-			fmt.Printf("[Worker] obs_data sent successfully\n")
-		}
+		a.workerConn.WriteJSON(obsData)
 	}
 }
 
@@ -396,9 +369,6 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 		"d":  requestData,
 	}
 
-	requestJSON, _ := json.Marshal(request)
-	fmt.Printf("[OBS] Sending request: %s\n", string(requestJSON))
-
 	ch := a.addPendingRequest(requestId)
 
 	a.mu.Lock()
@@ -413,15 +383,18 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 	select {
 	case responseData := <-ch:
 		a.removePendingRequest(requestId)
-		fmt.Printf("[OBS] Response received for %s\n", requestType)
 
 		var respData map[string]interface{}
 		json.Unmarshal(responseData, &respData)
-		fmt.Printf("[OBS] Response data: %s\n", string(responseData))
+
+		responseDataObj, ok := respData["responseData"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("no responseData in response")
+		}
 
 		switch requestType {
 		case "GetSceneList":
-			if scenesRaw, ok := respData["scenes"].([]interface{}); ok {
+			if scenesRaw, ok := responseDataObj["scenes"].([]interface{}); ok {
 				scenes := make([]string, len(scenesRaw))
 				for i, s := range scenesRaw {
 					if scene, ok := s.(map[string]interface{}); ok {
@@ -433,7 +406,7 @@ func (a *Agent) callOBS(requestType string) ([]string, error) {
 				return scenes, nil
 			}
 		case "GetInputList":
-			if inputsRaw, ok := respData["inputs"].([]interface{}); ok {
+			if inputsRaw, ok := responseDataObj["inputs"].([]interface{}); ok {
 				inputs := make([]string, len(inputsRaw))
 				for i, inp := range inputsRaw {
 					if input, ok := inp.(map[string]interface{}); ok {
@@ -472,16 +445,23 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 	}
 
 	for k, v := range params {
-		requestData[k] = v
+		if method == "Mute" && k == "target" {
+			requestData["inputName"] = v
+		} else if method == "Scene" && k == "target" {
+			requestData["sceneName"] = v
+		} else if method == "Visibility" && k == "target" {
+			requestData["sceneItemId"] = v
+		} else if method == "Filter" && k == "target" {
+			requestData["sourceName"] = v
+		} else {
+			requestData[k] = v
+		}
 	}
 
 	request := map[string]interface{}{
 		"op": 6,
 		"d":  requestData,
 	}
-
-	requestJSON, _ := json.Marshal(request)
-	fmt.Printf("[OBS] Command: %s\n", string(requestJSON))
 
 	a.mu.Lock()
 	err := obs.WriteJSON(request)
