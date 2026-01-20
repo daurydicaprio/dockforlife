@@ -1350,7 +1350,7 @@ export function OBSController() {
                 <Input
                   id="client-join-code"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setJoinCode(e.target.value)}
                   placeholder={strings.settings.joinCodePlaceholder}
                   maxLength={12}
                   className={cn(
@@ -1410,7 +1410,7 @@ export function OBSController() {
                 <Input
                   id="join-code"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setJoinCode(e.target.value)}
                   placeholder={strings.settings.joinCodePlaceholder}
                   maxLength={12}
                   disabled={!isRemoteMode}
