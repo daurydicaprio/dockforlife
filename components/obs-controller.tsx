@@ -33,7 +33,7 @@ import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
 import { getLocaleStrings, LocaleStrings, detectBrowserLanguage, Language } from "@/lib/locales"
 import { createConnectionManager, ConnectionManager, ConnectionState, ConnectionMode } from "@/lib/connection-manager"
 import { Download, Monitor } from "lucide-react"
-import { getWorkerUrl, generateJoinCode, getGitHubReleaseUrl } from "@/lib/config"
+import { getWorkerUrl, generateJoinCode, getGitHubReleaseUrl, isValidJoinCode } from "@/lib/config"
 import {
   Mic,
   Eye,
@@ -281,7 +281,7 @@ export function OBSController() {
     const workerUrl = getWorkerUrl()
     const code = joinCode.trim().toUpperCase()
     
-    if (!code) {
+    if (!isValidJoinCode(code)) {
       showToast(strings.toasts.codeExpired, "error")
       return
     }
@@ -761,8 +761,8 @@ export function OBSController() {
         {/* Header */}
         <header
           className={cn(
-            "sticky top-0 z-40 border-b backdrop-blur-xl",
-            isDark ? "border-zinc-800/50 bg-zinc-950/80" : "border-zinc-200/50 bg-zinc-50/80",
+            "sticky top-0 z-40 backdrop-blur-xl",
+            isDark ? "bg-zinc-950/80" : "bg-zinc-50/80",
           )}
         >
           <div className="container flex h-16 max-w-screen-xl mx-auto items-center justify-between px-4">
@@ -861,8 +861,8 @@ export function OBSController() {
         )}
 
         {/* Main Grid */}
-        <main className="flex-1 container max-w-screen-xl mx-auto px-3 py-4 sm:px-4 sm:py-6">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3">
+        <main className="flex-1 container max-w-md mx-auto px-4 py-6 sm:py-8 mt-4">
+        <div className="grid grid-cols-4 gap-3 sm:grid-cols-4">
           {deck.map((btn, i) => {
             const isRecording = btn.type === "Record" && obsData.rec
             const isStreaming = btn.type === "Stream" && obsData.str
@@ -955,11 +955,11 @@ export function OBSController() {
       {/* Footer */}
       <footer
         className={cn(
-          "border-t py-4 px-4",
-          isDark ? "border-zinc-800/50 bg-zinc-900/50" : "border-zinc-200/50 bg-zinc-100/50",
+          "py-4 px-4",
+          isDark ? "bg-zinc-900/50" : "bg-zinc-100/50",
         )}
       >
-        <div className="container max-w-screen-xl flex flex-col items-center gap-3">
+        <div className="container max-w-md mx-auto flex flex-col items-center gap-3">
           <Logo className="h-10 w-10 opacity-30" />
 
           {/* Donate button */}
@@ -1471,22 +1471,30 @@ export function OBSController() {
                   id="remote-mode"
                   onClick={async () => {
                     const newValue = !isRemoteMode
+                    
+                    if (newValue && !isValidJoinCode(joinCode)) {
+                      showToast(strings.toasts.codeExpired, "error")
+                      return
+                    }
+                    
+                    if (connected && obsRef.current) {
+                      console.log(`[UI] Disconnecting current socket before mode switch...`)
+                      try {
+                        await obsRef.current.disconnect()
+                      } catch (err) {
+                        console.log(`[UI] Disconnect error (ignored): ${err}`)
+                      }
+                      obsRef.current = null
+                      setConnected(false)
+                      setIsRemoteConnected(false)
+                    }
+                    
                     setIsRemoteMode(newValue)
+                    setConnectionMode("none")
                     localStorage.setItem("dfl_remote_mode", String(newValue))
                     console.log(`[UI] Remote mode ${newValue ? "enabled" : "disabled"}`)
                     
-                    if (connected) {
-                      console.log(`[UI] Resetting connection due to mode change...`)
-                      if (obsRef.current) {
-                        try {
-                          await obsRef.current.disconnect()
-                        } catch {}
-                        obsRef.current = null
-                      }
-                      setConnected(false)
-                      setConnectionMode("none")
-                      showToast(newValue ? "Switched to Remote Mode" : "Switched to Local Mode", "success")
-                    }
+                    showToast(newValue ? strings.toasts.remoteEnabled : strings.toasts.localEnabled, "success")
                   }}
                   className={cn(
                     "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
@@ -1531,51 +1539,10 @@ export function OBSController() {
                 </Select>
               </div>
 
-              <div className="flex gap-2 p-1 rounded-lg bg-zinc-100 dark:bg-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRemoteMode(false)
-                    setConnectionMode("none")
-                  }}
-                  className={cn(
-                    "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all",
-                    !isRemoteMode
-                      ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white"
-                      : "text-zinc-500 dark:text-zinc-400"
-                  )}
-                >
-                  🏠 Local
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (connected && obsRef.current) {
-                      try {
-                        obsRef.current.disconnect()
-                        console.log(`[UI] Closed local OBS for remote mode`)
-                      } catch {}
-                      obsRef.current = null
-                      setConnected(false)
-                    }
-                    setIsRemoteMode(true)
-                    setConnectionMode("none")
-                  }}
-                  className={cn(
-                    "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all",
-                    isRemoteMode
-                      ? "bg-blue-500 text-white shadow-sm"
-                      : "text-zinc-500 dark:text-zinc-400"
-                  )}
-                >
-                  ☁️ Remote
-                </button>
-              </div>
-
               <div
                 className={cn(
-                  "rounded-lg p-4 border",
-                  isDark ? "bg-zinc-800/50 border-zinc-700" : "bg-zinc-50 border-zinc-200",
+                  "rounded-lg p-4",
+                  isDark ? "bg-zinc-800/50" : "bg-zinc-50",
                 )}
               >
                 <div className="flex items-center gap-2 mb-2">
