@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -89,7 +91,7 @@ func (a *Agent) Start() error {
 func (a *Agent) promptJoinCode() string {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Printf("Enter a Join Code (4-12 chars, e.g., MYCODE), or press Enter to generate one: ")
+	fmt.Printf("Enter a Join Code (4-12 chars, e.g., MOMO), or press Enter to generate one: ")
 	code, _ := reader.ReadString('\n')
 	code = strings.TrimSpace(code)
 
@@ -185,27 +187,37 @@ func (a *Agent) connectWorker() error {
 		workerURL = "wss://" + workerURL
 	}
 
-	fullURL := fmt.Sprintf("%s?code=%s&type=host", workerURL, a.cfg.JoinCode)
-	fmt.Printf("[Worker] Connecting to %s\n", workerURL)
+	fullURL := fmt.Sprintf("%s?code=%s&role=host", workerURL, a.cfg.JoinCode)
+	fmt.Printf("[Worker] Connecting to %s\n", fullURL)
 
-	conn, _, err := websocket.DefaultDialer.Dial(fullURL, nil)
+	header := http.Header{}
+	header.Set("Upgrade", "websocket")
+	header.Set("Connection", "Upgrade")
+	header.Set("Sec-WebSocket-Version", "13")
+
+	conn, resp, err := websocket.DefaultDialer.Dial(fullURL, header)
 	if err != nil {
-		return fmt.Errorf("failed to connect to worker: %w", err)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to connect to worker: %w, response: %s", err, string(body))
 	}
 
 	a.mu.Lock()
 	a.workerConn = conn
 	a.mu.Unlock()
 
-	fmt.Printf("[Worker] ✓ Connected! Waiting for clients...\n")
+	fmt.Printf("[Worker] Socket opened, sending register...\n")
 
 	registerMsg := map[string]interface{}{
-		"type":     "register",
-		"joinCode": a.cfg.JoinCode,
+		"type": "register",
+		"role": "host",
+		"code": a.cfg.JoinCode,
 	}
+
 	if err := conn.WriteJSON(registerMsg); err != nil {
-		return fmt.Errorf("failed to register: %w", err)
+		return fmt.Errorf("failed to send register: %w", err)
 	}
+
+	fmt.Printf("[Worker] ✓ Registered with code: %s\n", a.cfg.JoinCode)
 
 	go a.handleWorkerMessages()
 
@@ -326,6 +338,12 @@ func (a *Agent) handleWorkerMessages() {
 
 			case "peer_connected":
 				fmt.Printf("[Worker] ✓ Peer connected!\n")
+
+			case "waiting":
+				fmt.Printf("[Worker] Waiting for client...\n")
+
+			case "connected":
+				fmt.Printf("[Worker] ✓ Connected to remote client!\n")
 			}
 		}
 	}
@@ -371,9 +389,10 @@ func generateRequestID() string {
 func generateJoinCode() string {
 	chars := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	result := ""
+	rand := time.Now().UnixNano()
 	for i := 0; i < 8; i++ {
-		result += string(chars[time.Now().UnixNano()%int64(len(chars))])
-		time.Sleep(time.Nanosecond)
+		result += string(chars[rand%int64(len(chars))])
+		rand = (rand*1103515245 + 12345) & 0x7fffffff
 	}
 	return result
 }
