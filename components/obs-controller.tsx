@@ -183,6 +183,7 @@ export function OBSController() {
   const [isClientMode, setIsClientMode] = useState(false)
   const [remoteWaitingForAgent, setRemoteWaitingForAgent] = useState(false)
   const [remoteConnectionFailed, setRemoteConnectionFailed] = useState(false)
+  const [hasOBSData, setHasOBSData] = useState(false)
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
@@ -346,6 +347,7 @@ export function OBSController() {
           showToast(strings.toasts.connected, "success")
         } else if (data.type === "obs_data") {
           console.log(`[Worker] OBS data received: ${data.scenes?.length || 0} scenes, ${data.inputs?.length || 0} inputs`)
+          setHasOBSData(true)
           setObsData((prev) => ({
             ...prev,
             scenes: data.scenes || prev.scenes,
@@ -518,20 +520,27 @@ export function OBSController() {
 
   const execute = useCallback(
     async (btn: DeckButton) => {
-      console.log(`[EXECUTE] Action=${btn.type} Target=${btn.target || ""} Filter=${btn.filter || ""} Mode=${connectionMode}`)
+      console.log(`[EXECUTE] Action=${btn.type} Target=${btn.target || ""} Mode=${connectionMode} HasData=${hasOBSData}`)
 
-      if (connectionMode === "remote" && workerRef.current?.readyState === WebSocket.OPEN) {
-        const command = {
-          type: "obs_command",
-          command: btn.type,
-          args: {
-            ...(btn.target && { target: btn.target }),
-            ...(btn.filter && { filter: btn.filter }),
-          },
+      if (connectionMode === "remote") {
+        if (!hasOBSData) {
+          console.log(`[EXECUTE] Waiting for OBS data...`)
+          showToast("Cargando datos de OBS...", "error")
+          return
         }
-        console.log(`[EXECUTE] Sending via Worker: ${JSON.stringify(command)}`)
-        workerRef.current.send(JSON.stringify(command))
-        return
+        if (workerRef.current?.readyState === WebSocket.OPEN) {
+          const command = {
+            type: "obs_command",
+            command: btn.type,
+            args: {
+              ...(btn.target && { target: btn.target }),
+              ...(btn.filter && { filter: btn.filter }),
+            },
+          }
+          console.log(`[EXECUTE] Sending via Worker: ${JSON.stringify(command)}`)
+          workerRef.current.send(JSON.stringify(command))
+          return
+        }
       }
 
       if (!obsRef.current || !connected) {
@@ -618,7 +627,7 @@ export function OBSController() {
         showToast(strings.toasts.connectionError, "error")
       }
     },
-    [connected, showToast, connectionMode],
+    [connected, showToast, connectionMode, hasOBSData],
   )
 
   const executeContract = useCallback(

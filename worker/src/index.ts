@@ -57,41 +57,13 @@ export class RelaySession {
       serverSocket.addEventListener("message", (e: MessageEvent) => {
         try {
           const data = e.data as string
-          console.log(`[Relay] ${this.code}: ${data.substring(0, 100)}`)
-
-          const parsed = JSON.parse(data)
-          const msgType = parsed.type || "unknown"
-
-          if (msgType === "register") {
-            const regCode = (parsed.code || this.code).toUpperCase()
-            const regRole = parsed.role || role
-
-            if (role === "host") {
-              this.hostSocket = serverSocket
-            } else {
-              this.clientSocket = serverSocket
-            }
-
-            const peer = role === "host" ? this.clientSocket : this.hostSocket
-
-            if (peer) {
-              serverSocket.send(JSON.stringify({ type: "connected", code: regCode }))
-              peer.send(JSON.stringify({ type: "peer_connected", code: regCode }))
-              console.log(`[Relay] SUCCESS: ${regCode}`)
-            } else {
-              serverSocket.send(JSON.stringify({ type: "waiting", code: regCode }))
-              console.log(`[Relay] Waiting: ${regCode}`)
-            }
-            return
-          }
-
           const peer = role === "host" ? this.clientSocket : this.hostSocket
-          if (peer && peer !== serverSocket) {
+
+          if (peer && peer.readyState === WebSocket.OPEN) {
             peer.send(data)
-            console.log(`[Relay] Forwarded ${msgType}`)
           }
         } catch (err) {
-          console.log(`[Relay] Error: ${err}`)
+          console.log(`[Relay] Forward error: ${err}`)
         }
       })
 

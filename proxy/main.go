@@ -503,11 +503,34 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 		return fmt.Errorf("no OBS connection")
 	}
 
+	obsMethod := a.mapToOBSMethod(method)
+
+	fmt.Printf("[OBS] Sending: %s with params: %v\n", obsMethod, params)
+
 	return a.obsConn.WriteJSON(map[string]interface{}{
-		"requestType": method,
+		"requestType": obsMethod,
 		"requestId":   fmt.Sprintf("%d", time.Now().UnixNano()),
 		"requestData": params,
 	})
+}
+
+func (a *Agent) mapToOBSMethod(webMethod string) string {
+	switch webMethod {
+	case "Record":
+		return "ToggleRecord"
+	case "Stream":
+		return "ToggleStream"
+	case "Scene":
+		return "SetCurrentProgramScene"
+	case "Mute":
+		return "ToggleInputMute"
+	case "Filter":
+		return "SetSourceFilterEnabled"
+	case "Visibility":
+		return "SetSceneItemEnabled"
+	default:
+		return webMethod
+	}
 }
 
 func generateJoinCode() string {
