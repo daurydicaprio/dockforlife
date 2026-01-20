@@ -510,12 +510,26 @@ export function OBSController() {
 
   const execute = useCallback(
     async (btn: DeckButton) => {
+      console.log(`[EXECUTE] Action=${btn.type} Target=${btn.target || ""} Filter=${btn.filter || ""} Mode=${connectionMode}`)
+
+      if (connectionMode === "remote" && workerRef.current?.readyState === WebSocket.OPEN) {
+        const command = {
+          type: "obs_command",
+          command: btn.type,
+          args: {
+            ...(btn.target && { target: btn.target }),
+            ...(btn.filter && { filter: btn.filter }),
+          },
+        }
+        console.log(`[EXECUTE] Sending via Worker: ${JSON.stringify(command)}`)
+        workerRef.current.send(JSON.stringify(command))
+        return
+      }
+
       if (!obsRef.current || !connected) {
         showToast(strings.toasts.connectionError, "error")
         return
       }
-
-      console.log(`[EXECUTE] Action=${btn.type} Target=${btn.target || ""} Filter=${btn.filter || ""}`)
 
       const obs = obsRef.current
 
@@ -596,7 +610,7 @@ export function OBSController() {
         showToast(strings.toasts.connectionError, "error")
       }
     },
-    [connected, showToast],
+    [connected, showToast, connectionMode],
   )
 
   const executeContract = useCallback(
@@ -776,17 +790,17 @@ export function OBSController() {
   return (
     <div
       className={cn(
-        "min-h-screen flex flex-col transition-colors duration-300 max-w-md mx-auto w-full mt-10",
+        "min-h-screen flex flex-col transition-colors duration-300 max-w-5xl mx-auto w-full",
         isDark ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900",
       )}
     >
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <header className={cn("sticky top-0 z-40 backdrop-blur-xl", isDark ? "bg-zinc-950/80" : "bg-zinc-50/80")}>
-          <div className="flex h-14 items-center justify-between px-4">
+        <header className={cn("sticky top-0 z-40 backdrop-blur-xl pb-2", isDark ? "bg-zinc-950/80" : "bg-zinc-50/80")}>
+          <div className="flex h-16 items-center justify-between px-4">
             <div className="flex items-center gap-3">
-              <Logo className="h-8 w-8" />
-              <h1 className="text-lg font-bold tracking-tight">
+              <Logo className="h-12 w-12" />
+              <h1 className="text-xl font-bold tracking-tight">
                 DOCK<span className="text-blue-500">FORLIFE</span>
               </h1>
             </div>
@@ -877,38 +891,38 @@ export function OBSController() {
         )}
 
         {/* Main Grid */}
-        <main className="flex-1 container max-w-md mx-auto px-4 py-6 sm:py-8 mt-4">
-        <div className="grid grid-cols-4 gap-3 sm:grid-cols-4">
-          {deck.map((btn, i) => {
-            const isRecording = btn.type === "Record" && obsData.rec
-            const isStreaming = btn.type === "Stream" && obsData.str
-            const isMuted = btn.type === "Mute" && btn.target && muteStates[btn.target]
-            const isActive = isRecording || isStreaming
-            const isDragging = draggedIdx === i
-            const isDragOver = dragOverIdx === i
+        <main className="flex-1 container max-w-5xl mx-auto px-6 py-8">
+          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-4">
+            {deck.map((btn, i) => {
+              const isRecording = btn.type === "Record" && obsData.rec
+              const isStreaming = btn.type === "Stream" && obsData.str
+              const isMuted = btn.type === "Mute" && btn.target && muteStates[btn.target]
+              const isActive = isRecording || isStreaming
+              const isDragging = draggedIdx === i
+              const isDragOver = dragOverIdx === i
 
-            const bgColor = isRecording ? "#ef4444" : isStreaming ? "#22c55e" : btn.color
-            const textColor = getContrastColor(bgColor, isDark)
+              const bgColor = isRecording ? "#ef4444" : isStreaming ? "#22c55e" : btn.color
+              const textColor = getContrastColor(bgColor, isDark)
 
-            return (
-              <div
-                key={btn.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, i)}
-                onDragOver={(e) => handleDragOver(e, i)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, i)}
-                onDragEnd={handleDragEnd}
-                className={cn(
-                  "relative aspect-square transition-all duration-200",
-                  isDragging && "opacity-50 scale-95",
-                  isDragOver && "scale-105",
-                )}
-              >
-                <button
+              return (
+                <div
+                  key={btn.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, i)}
+                  onDragOver={(e) => handleDragOver(e, i)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, i)}
+                  onDragEnd={handleDragEnd}
                   className={cn(
-                    "w-full h-full rounded-xl flex flex-col items-center justify-center gap-1 transition-all relative overflow-hidden",
-                    "active:scale-95",
+                    "relative transition-all duration-200",
+                    isDragging && "opacity-50 scale-95",
+                    isDragOver && "scale-105",
+                  )}
+                >
+                  <button
+                  className={cn(
+                    "w-full h-24 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all relative overflow-hidden shadow-lg",
+                    "active:scale-95 hover:scale-[1.02]",
                     isMuted && "opacity-50",
                   )}
                   style={{
@@ -928,14 +942,14 @@ export function OBSController() {
                 >
                   <div className="relative">
                     {getIcon(btn.type)}
-                    {isMuted && <VolumeX className="absolute -top-1 -right-1 h-3 w-3" style={{ color: textColor }} />}
+                    {isMuted && <VolumeX className="absolute -top-1 -right-1 h-4 w-4" style={{ color: textColor }} />}
                   </div>
-                  <span className="text-xs font-bold uppercase text-center px-1 leading-tight">
+                  <span className="text-sm sm:text-base font-bold uppercase text-center px-2 leading-tight">
                     {btn.label}
                   </span>
                   {isActive && (
                     <span
-                      className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full animate-pulse"
+                      className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full animate-pulse"
                       style={{ backgroundColor: textColor }}
                     />
                   )}
@@ -960,16 +974,16 @@ export function OBSController() {
       </main>
 
       {/* Footer */}
-      <footer className={cn("py-4 px-4", isDark ? "bg-zinc-900/50" : "bg-zinc-100/50")}>
-        <div className="flex flex-col items-center gap-3">
-          <Logo className="h-8 w-8 opacity-30" />
+      <footer className={cn("py-6 px-4 border-t", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-zinc-100/50 border-zinc-200")}>
+        <div className="flex flex-col items-center gap-4">
+          <Logo className="h-12 w-12 opacity-40" />
 
           <a
             href="https://paypal.me/daurydicaprio"
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium",
+              "flex items-center gap-2 px-6 py-3 rounded-full text-sm font-medium",
               isDark
                 ? "bg-pink-500/10 text-pink-400 hover:bg-pink-500/20"
                 : "bg-pink-100 text-pink-600 hover:bg-pink-200",
@@ -979,19 +993,22 @@ export function OBSController() {
             Donar
           </a>
 
-          <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-            Made with love by{" "}
-            <a
-              href="https://daurydicaprio.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn("font-medium", isDark ? "text-zinc-300 hover:text-blue-400" : "text-zinc-700 hover:text-blue-600")}
-            >
-              Daury DiCaprio
-            </a>
-          </p>
-
-          <p className={cn("text-[10px]", isDark ? "text-zinc-700" : "text-zinc-400")}>v1.0.0-beta</p>
+          <div className="text-center space-y-1">
+            <p className={cn("text-sm", isDark ? "text-zinc-500" : "text-zinc-400")}>
+              Made with love by{" "}
+              <a
+                href="https://daurydicaprio.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn("font-medium", isDark ? "text-zinc-300 hover:text-blue-400" : "text-zinc-700 hover:text-blue-600")}
+              >
+                Daury DiCaprio
+              </a>
+            </p>
+            <p className={cn("text-xs font-medium", isDark ? "text-zinc-600" : "text-zinc-400")}>
+              v1.0.0-beta
+            </p>
+          </div>
         </div>
       </footer>
       </div>

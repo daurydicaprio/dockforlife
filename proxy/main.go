@@ -344,20 +344,34 @@ func (a *Agent) handleWorkerMessages() {
 			}
 
 			var msg map[string]interface{}
-			if err := json.Unmarshal(message, &msg); err != nil {
+			if err := json.Unmarshal(message, &msg); err != fmt.Errorf("unmarshal error: %w", err) {
+				fmt.Printf("[Worker] Failed to parse message: %v\n", err)
 				continue
 			}
 
-			switch msg["type"] {
+			msgType, _ := msg["type"].(string)
+			fmt.Printf("[Worker] Received: %s\n", msgType)
+
+			switch msgType {
 			case "ping":
+				fmt.Printf("[Worker] Ping received, sending pong\n")
 				worker.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
-			case "command":
-				method, _ := msg["method"].(string)
-				if method != "" {
-					a.SendCommand(method, nil)
+			case "pong":
+				fmt.Printf("[Worker] Pong received\n")
+			case "obs_command":
+				command, _ := msg["command"].(string)
+				args, _ := msg["args"].(map[string]interface{})
+				if command != "" {
+					fmt.Printf("[Worker] Executing: %s with args: %v\n", command, args)
+					a.SendCommand(command, args)
 				}
 			case "peer_connected":
-				fmt.Printf("[Worker] ✓ Client connected!\n")
+				fmt.Printf("[Worker] Client connected!\n")
+			case "error":
+				errMsg, _ := msg["message"].(string)
+				fmt.Printf("[Worker] Error: %s\n", errMsg)
+			default:
+				fmt.Printf("[Worker] Unknown message type: %s\n", msgType)
 			}
 		}
 	}
