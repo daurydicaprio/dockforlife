@@ -775,22 +775,26 @@ export function OBSController() {
               </button>
               <div
                 className={cn(
-                  "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold",
+                  "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold backdrop-blur-md",
                   isConnecting
                     ? isDark
-                      ? "bg-amber-500/10 text-amber-400"
-                      : "bg-amber-100 text-amber-600"
+                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                      : "bg-amber-100 text-amber-600 border border-amber-200"
                     : connected
-                      ? connectionMode === "remote"
+                      ? connectionMode === "bridge"
                         ? isDark
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "bg-blue-100 text-blue-600"
-                        : isDark
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : "bg-emerald-100 text-emerald-600"
+                          ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                          : "bg-purple-100 text-purple-600 border border-purple-200"
+                        : connectionMode === "remote"
+                          ? isDark
+                            ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                            : "bg-blue-100 text-blue-600 border border-blue-200"
+                          : isDark
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-emerald-100 text-emerald-600 border border-emerald-200"
                       : isDark
-                        ? "bg-zinc-800 text-zinc-500"
-                        : "bg-zinc-200 text-zinc-500",
+                        ? "bg-zinc-800/50 text-zinc-500 border border-zinc-700/50"
+                        : "bg-zinc-200/50 text-zinc-500 border border-zinc-300/50",
                 )}
               >
                 {isConnecting ? (
@@ -1137,13 +1141,25 @@ export function OBSController() {
         <DialogContent
           id="settings-dialog"
           className={cn(
-            "sm:max-w-md backdrop-blur-xl border",
-            isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
+            "sm:max-w-md backdrop-blur-2xl bg-white/70 dark:bg-zinc-950/70 border-white/20 shadow-2xl",
+            isDark ? "text-white" : "text-zinc-900"
           )}
+          style={{
+            backgroundImage: `radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.1) 0%, transparent 50%)`,
+          }}
         >
-          <DialogHeader>
-            <DialogTitle>{isClientMode ? strings.agent.title : strings.settings.title}</DialogTitle>
-            <DialogDescription className="text-sm text-zinc-500">
+          <div className="absolute inset-0 bg-gradient-to-b from-white/40 to-transparent dark:from-white/5 pointer-events-none rounded-[inherit]" />
+          <DialogHeader className="relative">
+            <DialogTitle className="flex items-center justify-center gap-2 text-xl">
+              <div className={cn(
+                "p-2 rounded-xl",
+                isDark ? "bg-blue-500/20" : "bg-blue-100"
+              )}>
+                <Wifi className="h-5 w-5 text-blue-500" />
+              </div>
+              {isClientMode ? strings.agent.title : strings.settings.title}
+            </DialogTitle>
+            <DialogDescription className="text-center text-sm text-zinc-500 dark:text-zinc-400">
               {isClientMode ? strings.agent.desc : strings.settings.remoteModeDesc}
             </DialogDescription>
           </DialogHeader>
