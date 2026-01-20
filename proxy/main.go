@@ -35,9 +35,7 @@ type Agent struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	mu         sync.Mutex
-	connected  bool
 	stopChan   chan struct{}
-	obsReady   bool
 }
 
 func NewAgent(cfg Config) *Agent {
@@ -66,9 +64,6 @@ func (a *Agent) Start() error {
 	fmt.Printf("\n")
 	fmt.Printf("╔══════════════════════════════════════════════════════════╗\n")
 	fmt.Printf("║           DockForLife Proxy Agent v1.0                  ║\n")
-	fmt.Printf("║                                                          ║\n")
-	fmt.Printf("║  OBS WebSocket: %-38s   ║\n", a.cfg.OBSURL)
-	fmt.Printf("║  Worker URL:    %-38s   ║\n", a.cfg.WorkerURL)
 	fmt.Printf("╚══════════════════════════════════════════════════════════╝\n")
 	fmt.Printf("\n")
 
@@ -111,19 +106,10 @@ func (a *Agent) connectOBSWithRetry() {
 			return
 		case <-a.ctx.Done():
 			return
-		default:
+		case <-time.After(a.cfg.ReconnectDelay):
 			if err := a.connectOBS(); err != nil {
 				log.Printf("[OBS] Connection failed: %v", err)
-				if a.cfg.AutoReconnect {
-					select {
-					case <-a.stopChan:
-						return
-					case <-a.ctx.Done():
-						return
-					case <-time.After(a.cfg.ReconnectDelay):
-						continue
-					}
-				}
+				continue
 			}
 			return
 		}
@@ -131,27 +117,32 @@ func (a *Agent) connectOBSWithRetry() {
 }
 
 func (a *Agent) connectOBS() error {
+	fmt.Printf("[OBS] Attempting connection to %s\n", a.cfg.OBSURL)
+
 	a.mu.Lock()
-	if a.obsReady && a.obsConn != nil {
+	if a.obsConn != nil {
 		a.mu.Unlock()
+		fmt.Printf("[OBS] Already connected\n")
 		return nil
 	}
 	a.mu.Unlock()
 
-	log.Printf("[OBS] Connecting to OBS: %s", a.cfg.OBSURL)
-
 	obs, resp, err := websocket.DefaultDialer.Dial(a.cfg.OBSURL, nil)
 	if err != nil {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to connect to OBS: %w, body: %s", err, string(body))
+		if resp != nil {
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Printf("[OBS] Error: %v\nResponse: %s\n", err, string(body))
+		} else {
+			fmt.Printf("[OBS] Error: %v\n", err)
+		}
+		return err
 	}
 
 	a.mu.Lock()
 	a.obsConn = obs
-	a.obsReady = true
 	a.mu.Unlock()
 
-	fmt.Printf("[OBS] ✓ Connected to OBS\n")
+	fmt.Printf("[OBS] ✓ Connected successfully\n")
 
 	go a.handleOBSMessages()
 
@@ -166,16 +157,12 @@ func (a *Agent) connectWorkerWithRetry() {
 		case <-a.ctx.Done():
 			return
 		default:
+			fmt.Printf("[Worker] Waiting 2 seconds before retry...\n")
+			time.Sleep(2 * time.Second)
+
 			if err := a.connectWorker(); err != nil {
-				log.Printf("[Worker] Connection failed: %v", err)
-				select {
-				case <-a.stopChan:
-					return
-				case <-a.ctx.Done():
-					return
-				case <-time.After(a.cfg.ReconnectDelay):
-					continue
-				}
+				fmt.Printf("[Worker] Retry failed: %v\n", err)
+				continue
 			}
 			return
 		}
@@ -189,25 +176,38 @@ func (a *Agent) connectWorker() error {
 		workerURL = "wss://" + workerURL
 	}
 
-	fullURL := fmt.Sprintf("%s?code=%s&role=host", workerURL, a.cfg.JoinCode)
-	fmt.Printf("[Worker] Connecting to %s\n", fullURL)
+	fmt.Printf("[Worker] Intentando handshake con el Worker...\n")
+	fmt.Printf("[Worker] URL: %s?code=%s\n", workerURL, a.cfg.JoinCode)
+
+	a.mu.Lock()
+	if a.workerConn != nil {
+		a.mu.Unlock()
+		fmt.Printf("[Worker] Already connected\n")
+		return nil
+	}
+	a.mu.Unlock()
 
 	header := http.Header{}
 	header.Set("Upgrade", "websocket")
 	header.Set("Connection", "Upgrade")
 	header.Set("Sec-WebSocket-Version", "13")
 
-	conn, resp, err := websocket.DefaultDialer.Dial(fullURL, header)
+	conn, resp, err := websocket.DefaultDialer.Dial(workerURL, header)
 	if err != nil {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to connect to worker: %w, response: %s", err, string(body))
+		if resp != nil {
+			body, _ := io.ReadAll(resp.Body)
+			fmt.Printf("[Worker] Handshake failed: %v\nResponse: %s\n", err, string(body))
+		} else {
+			fmt.Printf("[Worker] Handshake failed: %v\n", err)
+		}
+		return err
 	}
+
+	fmt.Printf("[Worker] Handshake successful, sending register...\n")
 
 	a.mu.Lock()
 	a.workerConn = conn
 	a.mu.Unlock()
-
-	fmt.Printf("[Worker] Socket opened, sending register...\n")
 
 	registerMsg := map[string]interface{}{
 		"type": "register",
@@ -216,10 +216,14 @@ func (a *Agent) connectWorker() error {
 	}
 
 	if err := conn.WriteJSON(registerMsg); err != nil {
-		return fmt.Errorf("failed to send register: %w", err)
+		fmt.Printf("[Worker] Failed to send register: %v\n", err)
+		a.mu.Lock()
+		a.workerConn = nil
+		a.mu.Unlock()
+		return err
 	}
 
-	fmt.Printf("[Worker] ✓ Registered with code: %s\n", a.cfg.JoinCode)
+	fmt.Printf("[Worker] ✓ Registered successfully with code: %s\n", a.cfg.JoinCode)
 
 	go a.handleWorkerMessages()
 
@@ -234,17 +238,18 @@ func (a *Agent) Stop() {
 	defer a.mu.Unlock()
 
 	if a.obsConn != nil {
+		fmt.Printf("[Agent] Closing OBS connection...\n")
 		a.obsConn.Close()
 		a.obsConn = nil
-		a.obsReady = false
 	}
+
 	if a.workerConn != nil {
+		fmt.Printf("[Agent] Closing Worker connection...\n")
 		a.workerConn.Close()
 		a.workerConn = nil
 	}
 
-	a.connected = false
-	fmt.Printf("[Agent] Stopped\n")
+	fmt.Printf("[Agent] Stopped gracefully\n")
 }
 
 func (a *Agent) handleOBSMessages() {
@@ -266,10 +271,9 @@ func (a *Agent) handleOBSMessages() {
 
 			_, message, err := obs.ReadMessage()
 			if err != nil {
-				log.Printf("[OBS] Read error: %v", err)
+				fmt.Printf("[OBS] Connection lost: %v\n", err)
 				a.mu.Lock()
 				a.obsConn = nil
-				a.obsReady = false
 				a.mu.Unlock()
 				go a.connectOBSWithRetry()
 				return
@@ -286,7 +290,7 @@ func (a *Agent) handleOBSMessages() {
 					"eventData": string(message),
 				}
 				if err := worker.WriteJSON(workerMsg); err != nil {
-					log.Printf("[Agent] Failed to forward OBS event: %v", err)
+					fmt.Printf("[OBS] Failed to forward event: %v\n", err)
 				}
 			}
 		}
@@ -312,7 +316,7 @@ func (a *Agent) handleWorkerMessages() {
 
 			_, message, err := worker.ReadMessage()
 			if err != nil {
-				log.Printf("[Worker] Read error: %v", err)
+				fmt.Printf("[Worker] Connection lost: %v\n", err)
 				a.mu.Lock()
 				a.workerConn = nil
 				a.mu.Unlock()
@@ -330,26 +334,15 @@ func (a *Agent) handleWorkerMessages() {
 			switch msgType {
 			case "ping":
 				worker.WriteMessage(websocket.TextMessage, []byte("pong"))
-
 			case "command":
 				method, _ := workerMsg["method"].(string)
-				paramsRaw, _ := workerMsg["params"].(interface{})
-				params, _ := paramsRaw.(map[string]interface{})
 				if method != "" {
-					a.SendCommand(method, params)
+					a.SendCommand(method, nil)
 				}
-
-			case "client_joined":
-				fmt.Printf("[Worker] ✓ Client connected!\n")
-
 			case "peer_connected":
 				fmt.Printf("[Worker] ✓ Peer connected!\n")
-
 			case "waiting":
 				fmt.Printf("[Worker] Waiting for client...\n")
-
-			case "connected":
-				fmt.Printf("[Worker] ✓ Connected to remote client!\n")
 			}
 		}
 	}
@@ -376,20 +369,16 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 
 	req := map[string]interface{}{
 		"requestType": method,
-		"requestId":   generateRequestID(),
+		"requestId":   fmt.Sprintf("%d", time.Now().UnixNano()),
 		"requestData": params,
 	}
 
 	if err := a.obsConn.WriteJSON(req); err != nil {
-		return fmt.Errorf("failed to send command: %w", err)
+		return err
 	}
 
-	log.Printf("[OBS] Sent command: %s", method)
+	fmt.Printf("[OBS] Command sent: %s\n", method)
 	return nil
-}
-
-func generateRequestID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
 func generateJoinCode() string {
@@ -404,10 +393,10 @@ func generateJoinCode() string {
 }
 
 func main() {
-	obsURL := flag.String("obs", "", "OBS WebSocket URL (default: ws://127.0.0.1:4455)")
+	obsURL := flag.String("obs", "", "OBS WebSocket URL")
 	obsPassword := flag.String("password", "", "OBS WebSocket password")
-	workerURL := flag.String("worker", "", "Cloudflare Worker URL (default: wss://remote.daurydicaprio.com/ws)")
-	joinCode := flag.String("code", "", "Join code for this host")
+	workerURL := flag.String("worker", "", "Worker URL")
+	joinCode := flag.String("code", "", "Join code")
 	noAutoReconnect := flag.Bool("no-auto-reconnect", false, "Disable auto-reconnect")
 
 	flag.Parse()
