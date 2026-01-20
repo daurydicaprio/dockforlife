@@ -1469,6 +1469,11 @@ export function OBSController() {
                     localStorage.setItem("dfl_remote_mode", String(newValue))
                     
                     showToast(newValue ? strings.toasts.remoteEnabled : strings.toasts.localEnabled, "success")
+                    
+                    if (newValue && joinCode.trim()) {
+                      console.log(`[UI] Auto-connecting to Worker...`)
+                      connectToWorker()
+                    }
                   }}
                   className={cn(
                     "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
