@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -176,8 +175,9 @@ func (a *Agent) connectWorker() error {
 		workerURL = "wss://" + workerURL
 	}
 
+	fullURL := fmt.Sprintf("%s?code=%s&role=host", workerURL, strings.ToUpper(a.cfg.JoinCode))
 	fmt.Printf("[Worker] Intentando handshake con el Worker...\n")
-	fmt.Printf("[Worker] URL: %s?code=%s\n", workerURL, a.cfg.JoinCode)
+	fmt.Printf("[Worker] URL: %s\n", fullURL)
 
 	a.mu.Lock()
 	if a.workerConn != nil {
@@ -187,12 +187,7 @@ func (a *Agent) connectWorker() error {
 	}
 	a.mu.Unlock()
 
-	header := http.Header{}
-	header.Set("Upgrade", "websocket")
-	header.Set("Connection", "Upgrade")
-	header.Set("Sec-WebSocket-Version", "13")
-
-	conn, resp, err := websocket.DefaultDialer.Dial(workerURL, header)
+	conn, resp, err := websocket.DefaultDialer.Dial(fullURL, nil)
 	if err != nil {
 		if resp != nil {
 			body, _ := io.ReadAll(resp.Body)
@@ -212,7 +207,7 @@ func (a *Agent) connectWorker() error {
 	registerMsg := map[string]interface{}{
 		"type": "register",
 		"role": "host",
-		"code": a.cfg.JoinCode,
+		"code": strings.ToUpper(a.cfg.JoinCode),
 	}
 
 	if err := conn.WriteJSON(registerMsg); err != nil {
@@ -223,7 +218,7 @@ func (a *Agent) connectWorker() error {
 		return err
 	}
 
-	fmt.Printf("[Worker] ✓ Registered successfully with code: %s\n", a.cfg.JoinCode)
+	fmt.Printf("[Worker] ✓ Registered successfully with code: %s\n", strings.ToUpper(a.cfg.JoinCode))
 
 	go a.handleWorkerMessages()
 
