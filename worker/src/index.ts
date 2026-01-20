@@ -42,41 +42,53 @@ export class RelaySession {
     this.code = url.searchParams.get("code")?.toUpperCase() || ""
     const role = url.searchParams.get("role") || "client"
 
-    console.log(`[Relay] Incoming: ${this.code} (${role})`)
-
     try {
       const pair = new WebSocketPair()
       const [clientSocket, serverSocket] = [pair[0], pair[1]]
 
       serverSocket.accept()
-      console.log(`[Relay] Connected: ${this.code} (${role})`)
 
       if (role === "host") {
         this.hostSocket = serverSocket
-        console.log(`[Relay] Host registered: ${this.code}`)
       } else {
         this.clientSocket = serverSocket
-        console.log(`[Relay] Client registered: ${this.code}`)
       }
 
       serverSocket.addEventListener("message", (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data as string)
-          console.log(`[Relay] ${this.code}: ${data.type}`)
+          const data = e.data as string
+          console.log(`[Relay] ${this.code}: ${data.substring(0, 100)}`)
 
-          if (data.type === "register") {
-            if (role === "host" && this.clientSocket) {
-              this.clientSocket.send(JSON.stringify({ type: "connected", code: this.code }))
-              this.hostSocket?.send(JSON.stringify({ type: "peer_connected", code: this.code }))
-              console.log(`[Relay] SUCCESS: ${this.code}`)
-            } else if (this.hostSocket) {
-              this.hostSocket.send(JSON.stringify({ type: "connected", code: this.code }))
-              this.clientSocket?.send(JSON.stringify({ type: "peer_connected", code: this.code }))
-              console.log(`[Relay] SUCCESS: ${this.code}`)
+          const parsed = JSON.parse(data)
+          const msgType = parsed.type || "unknown"
+
+          if (msgType === "register") {
+            const regCode = (parsed.code || this.code).toUpperCase()
+            const regRole = parsed.role || role
+
+            if (role === "host") {
+              this.hostSocket = serverSocket
             } else {
-              serverSocket.send(JSON.stringify({ type: "waiting", code: this.code }))
-              console.log(`[Relay] Waiting: ${this.code}`)
+              this.clientSocket = serverSocket
             }
+
+            const peer = role === "host" ? this.clientSocket : this.hostSocket
+
+            if (peer) {
+              serverSocket.send(JSON.stringify({ type: "connected", code: regCode }))
+              peer.send(JSON.stringify({ type: "peer_connected", code: regCode }))
+              console.log(`[Relay] SUCCESS: ${regCode}`)
+            } else {
+              serverSocket.send(JSON.stringify({ type: "waiting", code: regCode }))
+              console.log(`[Relay] Waiting: ${regCode}`)
+            }
+            return
+          }
+
+          const peer = role === "host" ? this.clientSocket : this.hostSocket
+          if (peer && peer !== serverSocket) {
+            peer.send(data)
+            console.log(`[Relay] Forwarded ${msgType}`)
           }
         } catch (err) {
           console.log(`[Relay] Error: ${err}`)
@@ -84,7 +96,6 @@ export class RelaySession {
       })
 
       serverSocket.addEventListener("close", () => {
-        console.log(`[Relay] Disconnected: ${this.code}`)
         if (role === "host") {
           this.hostSocket = null
         } else {

@@ -344,6 +344,14 @@ export function OBSController() {
           setIsConnecting(false)
           setSettingsOpen(false)
           showToast(strings.toasts.connected, "success")
+        } else if (data.type === "obs_data") {
+          console.log(`[Worker] OBS data received: ${data.scenes?.length || 0} scenes, ${data.inputs?.length || 0} inputs`)
+          setObsData((prev) => ({
+            ...prev,
+            scenes: data.scenes || prev.scenes,
+            inputs: data.inputs || prev.inputs,
+            allSources: [...(data.scenes || []), ...(data.inputs || [])].sort(),
+          }))
         } else if (data.type === "obs_event") {
           console.log(`[Worker] OBS event received`)
         } else if (data.type === "error") {
