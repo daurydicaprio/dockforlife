@@ -402,14 +402,14 @@ func (a *Agent) sendOBSData() {
 
 	fmt.Printf("[OBS] Fetching scene list...\n")
 
-	scenes, err := a.getSceneList()
+	scenes, err := a.callOBSWithTimeout("GetSceneList", nil)
 	if err != nil {
 		fmt.Printf("[OBS] Failed to get scenes: %v\n", err)
 		return
 	}
 	fmt.Printf("[OBS] Got %d scenes\n", len(scenes))
 
-	inputs, err := a.getInputList()
+	inputs, err := a.callOBSWithTimeout("GetInputList", nil)
 	if err != nil {
 		fmt.Printf("[OBS] Failed to get inputs: %v\n", err)
 		return
@@ -437,7 +437,7 @@ func (a *Agent) sendOBSData() {
 	}
 }
 
-func (a *Agent) getSceneList() ([]string, error) {
+func (a *Agent) callOBSWithTimeout(requestType string, requestData map[string]interface{}) ([]string, error) {
 	a.mu.Lock()
 	obs := a.obsConn
 	a.mu.Unlock()
@@ -446,22 +446,102 @@ func (a *Agent) getSceneList() ([]string, error) {
 		return nil, fmt.Errorf("no OBS connection")
 	}
 
-	var result struct {
-		Scenes []struct {
-			SceneName string `json:"sceneName"`
-		} `json:"scenes"`
+	requestId := fmt.Sprintf("req_%d", time.Now().UnixNano())
+
+	request := map[string]interface{}{
+		"requestType": requestType,
+		"requestId":   requestId,
+		"requestData": requestData,
 	}
 
-	if err := obs.ReadJSON(&result); err != nil {
-		return nil, err
+	fmt.Printf("[OBS] Calling %s (requestId: %s)\n", requestType, requestId)
+
+	if err := obs.WriteJSON(request); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
-	scenes := make([]string, len(result.Scenes))
-	for i, s := range result.Scenes {
-		scenes[i] = s.SceneName
+	timeout := time.After(3 * time.Second)
+	done := make(chan bool)
+	var response map[string]interface{}
+
+	go func() {
+		for {
+			a.mu.Lock()
+			conn := a.obsConn
+			a.mu.Unlock()
+
+			if conn == nil {
+				done <- false
+				return
+			}
+
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				done <- false
+				return
+			}
+
+			if err := json.Unmarshal(msg, &response); err != nil {
+				continue
+			}
+
+			respId, ok := response["requestId"].(string)
+			if ok && respId == requestId {
+				done <- true
+				return
+			}
+		}
+	}()
+
+	select {
+	case success := <-done:
+		if !success {
+			return nil, fmt.Errorf("connection lost or timeout")
+		}
+	case <-timeout:
+		return nil, fmt.Errorf("timeout waiting for response")
 	}
 
-	return scenes, nil
+	respData, ok := response["requestData"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response format")
+	}
+
+	fmt.Printf("[OBS] Response received for %s\n", requestType)
+
+	switch requestType {
+	case "GetSceneList":
+		scenesRaw, ok := respData["scenes"].([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("no scenes in response")
+		}
+		scenes := make([]string, len(scenesRaw))
+		for i, s := range scenesRaw {
+			if scene, ok := s.(map[string]interface{}); ok {
+				if name, ok := scene["sceneName"].(string); ok {
+					scenes[i] = name
+				}
+			}
+		}
+		return scenes, nil
+
+	case "GetInputList":
+		inputsRaw, ok := respData["inputs"].([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("no inputs in response")
+		}
+		inputs := make([]string, len(inputsRaw))
+		for i, inp := range inputsRaw {
+			if input, ok := inp.(map[string]interface{}); ok {
+				if name, ok := input["inputName"].(string); ok {
+					inputs[i] = name
+				}
+			}
+		}
+		return inputs, nil
+	}
+
+	return nil, fmt.Errorf("unsupported request type: %s", requestType)
 }
 
 func (a *Agent) getInputList() ([]string, error) {
