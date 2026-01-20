@@ -560,6 +560,25 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 	}
 
 	for k, v := range params {
+		valueStr, isString := v.(string)
+		if isString {
+			matchedName := a.findOBSName(method, k, valueStr)
+			if matchedName != "" {
+				if method == "Mute" && k == "target" {
+					requestData["inputName"] = matchedName
+				} else if method == "Scene" && k == "target" {
+					requestData["sceneName"] = matchedName
+				} else if method == "Visibility" && k == "target" {
+					requestData["sceneItemId"] = matchedName
+				} else if method == "Filter" && k == "target" {
+					requestData["sourceName"] = matchedName
+				} else {
+					requestData[k] = matchedName
+				}
+				continue
+			}
+		}
+
 		if method == "Mute" && k == "target" {
 			requestData["inputName"] = v
 		} else if method == "Scene" && k == "target" {
@@ -586,6 +605,58 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 	a.mu.Unlock()
 
 	return err
+}
+
+func (a *Agent) findOBSName(method string, key string, value string) string {
+	if key != "target" {
+		return ""
+	}
+
+	a.mu.Lock()
+	obs := a.obsConn
+	a.mu.Unlock()
+
+	if obs == nil {
+		return ""
+	}
+
+	var candidates []string
+	var foundName string
+
+	if method == "Scene" {
+		scenes, _ := a.callOBS("GetSceneList")
+		candidates = scenes
+	} else if method == "Mute" {
+		inputs, _ := a.callOBS("GetInputList")
+		candidates = inputs
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	lowerValue := strings.ToLower(strings.TrimSpace(value))
+
+	for _, candidate := range candidates {
+		lowerCandidate := strings.ToLower(candidate)
+
+		if lowerCandidate == lowerValue {
+			return candidate
+		}
+
+		if strings.Contains(lowerCandidate, lowerValue) || lowerValue == strings.ToLower(strings.TrimSpace(candidate)) {
+			foundName = candidate
+		}
+
+		parts := strings.Fields(candidate)
+		for _, part := range parts {
+			if strings.ToLower(part) == lowerValue {
+				return candidate
+			}
+		}
+	}
+
+	return foundName
 }
 
 func (a *Agent) mapToOBSMethod(webMethod string) string {
