@@ -20,11 +20,15 @@ export interface LocaleStrings {
   }
   settings: {
     title: string
+    desc: string
     wsUrl: string
     wsUrlPlaceholder: string
     wsUrlHint: string
+    local: string
+    connected: string
     localMode: string
     localModeDesc: string
+    remote: string
     remoteMode: string
     remoteModeDesc: string
     joinCode: string
@@ -65,6 +69,7 @@ export interface LocaleStrings {
       searchingAgent: string
       remoteEnabled: string
       localEnabled: string
+      waitingForOBS: string
     }
     agent: {
       title: string
@@ -76,10 +81,13 @@ export interface LocaleStrings {
       note: string
     }
     dialogs: {
-    deleteTitle: string
-    deleteDesc: string
-    cancel: string
-    delete: string
+      editTitle: string
+      addTitle: string
+      save: string
+      deleteTitle: string
+      deleteDesc: string
+      cancel: string
+      delete: string
   }
   onboarding: {
     title: string
@@ -129,11 +137,15 @@ export const locales: Record<Language, LocaleStrings> = {
     },
     settings: {
       title: 'OBS Connection',
+      desc: 'Configure how to connect to OBS',
       wsUrl: 'Local WebSocket URL',
       wsUrlPlaceholder: 'ws://127.0.0.1:4455',
       wsUrlHint: 'Default: ws://127.0.0.1:4455',
+      local: 'Local',
+      connected: 'Connected',
       localMode: 'Local Mode',
       localModeDesc: 'Connect directly to OBS on this device',
+      remote: 'Remote',
       remoteMode: 'Remote Mode',
       remoteModeDesc: 'Generate a code to control OBS from another device',
       joinCode: 'Control Code',
@@ -174,6 +186,7 @@ export const locales: Record<Language, LocaleStrings> = {
       searchingAgent: 'Searching for local agent...',
       remoteEnabled: 'Remote mode enabled',
       localEnabled: 'Local mode enabled',
+      waitingForOBS: 'Waiting for OBS data...',
     },
     agent: {
       title: 'Local Agent Required',
@@ -185,6 +198,9 @@ export const locales: Record<Language, LocaleStrings> = {
       note: 'Small executable (~7MB). No installation required.',
     },
     dialogs: {
+      editTitle: 'Edit Button',
+      addTitle: 'Add Button',
+      save: 'Save',
       deleteTitle: 'Delete button?',
       deleteDesc: 'This action cannot be undone.',
       cancel: 'Cancel',
@@ -236,11 +252,15 @@ export const locales: Record<Language, LocaleStrings> = {
     },
     settings: {
       title: 'Conexión OBS',
+      desc: 'Configura cómo conectar a OBS',
       wsUrl: 'URL WebSocket Local',
       wsUrlPlaceholder: 'ws://127.0.0.1:4455',
       wsUrlHint: 'Por defecto: ws://127.0.0.1:4455',
+      local: 'Local',
+      connected: 'Conectado',
       localMode: 'Modo Local',
       localModeDesc: 'Conectar directamente a OBS en este dispositivo',
+      remote: 'Remoto',
       remoteMode: 'Modo Remoto',
       remoteModeDesc: 'Generar un código para controlar OBS desde otro dispositivo',
       joinCode: 'Código de Control',
@@ -281,6 +301,7 @@ export const locales: Record<Language, LocaleStrings> = {
       searchingAgent: 'Buscando agente local...',
       remoteEnabled: 'Modo remoto activado',
       localEnabled: 'Modo local activado',
+      waitingForOBS: 'Esperando datos de OBS...',
     },
     agent: {
       title: 'Se Requiere Agente Local',
@@ -292,6 +313,9 @@ export const locales: Record<Language, LocaleStrings> = {
       note: 'Ejecutable pequeño (~7MB). No requiere instalación.',
     },
     dialogs: {
+      editTitle: 'Editar Botón',
+      addTitle: 'Añadir Botón',
+      save: 'Guardar',
       deleteTitle: '¿Eliminar botón?',
       deleteDesc: 'Esta acción no se puede deshacer.',
       cancel: 'Cancelar',

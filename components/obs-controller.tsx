@@ -1,19 +1,19 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import OBSWebSocket from "obs-websocket-js"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
+  AlertDialogDescription as AlertDialogDesc,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -30,7 +30,7 @@ import {
   commandToString,
 } from "@/lib/obs-validator"
 import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
-import { getLocaleStrings, LocaleStrings, detectBrowserLanguage, Language } from "@/lib/locales"
+import { getLocaleStrings, LocaleStrings, Language } from "@/lib/locales"
 import { createConnectionManager, ConnectionManager, ConnectionState, ConnectionMode } from "@/lib/connection-manager"
 import { Download, Monitor } from "lucide-react"
 import { getWorkerUrl, generateJoinCode, getGitHubReleaseUrl, isValidJoinCode } from "@/lib/config"
@@ -56,6 +56,7 @@ import {
   Shield,
   HardDrive,
   Lock,
+  Loader2,
 } from "lucide-react"
 
 type ButtonType = "Mute" | "Visibility" | "Filter" | "Scene" | "Record" | "Stream"
@@ -121,7 +122,7 @@ function getIcon(type: ButtonType) {
 
 function Logo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 48 48" className={className} fill="currentColor">
+    <svg viewBox="0 0 48 48" className={className} fill="currentColor" aria-hidden="true">
       <rect x="4" y="8" width="40" height="32" rx="4" strokeWidth="2" stroke="currentColor" fill="none" />
       <circle cx="14" cy="24" r="4" />
       <circle cx="24" cy="24" r="4" />
@@ -187,6 +188,11 @@ export function OBSController() {
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
+  const obsDataRef = useRef(obsData)
+
+  useEffect(() => {
+    obsDataRef.current = obsData
+  }, [obsData])
 
   useEffect(() => {
     isRemoteModeRef.current = isRemoteMode
@@ -225,7 +231,8 @@ export function OBSController() {
       setLang(savedLang)
       setStrings(getLocaleStrings(savedLang))
     } else {
-      const detectedLang = detectBrowserLanguage()
+      const browserLang = navigator.language || "en"
+      const detectedLang: Language = browserLang.startsWith("es") ? "es" : "en"
       setLang(detectedLang)
       setStrings(getLocaleStrings(detectedLang))
       localStorage.setItem("dfl_lang", detectedLang)
@@ -246,7 +253,6 @@ export function OBSController() {
       setUserOS("other")
     }
 
-    // Show onboarding on first visit
     const hasVisited = localStorage.getItem("dfl_visited")
     if (!hasVisited) {
       setOnboardingOpen(true)
@@ -259,12 +265,21 @@ export function OBSController() {
     localStorage.setItem("dfl_theme", isDark ? "dark" : "light")
   }, [isDark])
 
-  // Save deck to localStorage
   useEffect(() => {
     if (deck.length > 0) {
       localStorage.setItem("dfl_deck_v2", JSON.stringify(deck))
     }
   }, [deck])
+
+  const updateOBSData = useCallback((data: { scenes?: string[]; inputs?: string[] }) => {
+    setObsData((prev) => ({
+      ...prev,
+      scenes: (data.scenes || prev.scenes.map(s => s.sceneName)).map(name => ({ sceneName: name })),
+      inputs: (data.inputs || prev.inputs.map(i => i.inputName)).map(name => ({ inputName: name })),
+      allSources: [...(data.scenes || prev.scenes.map(s => s.sceneName)), ...(data.inputs || prev.inputs.map(i => i.inputName))].sort(),
+    }))
+    setHasOBSData(true)
+  }, [])
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
@@ -275,140 +290,125 @@ export function OBSController() {
     if (remoteTimeoutRef.current) clearTimeout(remoteTimeoutRef.current)
     remoteTimeoutRef.current = setTimeout(() => {
       setRemoteConnectionFailed(true)
-      console.log(`[OBS] Remote connection timeout - showing help banner`)
     }, 5000)
+  }, [])
+
+  const disconnectWorker = useCallback(() => {
+    if (workerRef.current) {
+      try {
+        workerRef.current.close()
+      } catch {}
+      workerRef.current = null
+    }
+    setIsRemoteConnected(false)
+    setRemoteWaitingForAgent(false)
   }, [])
 
   const connectToWorker = useCallback(async () => {
     const workerUrl = getWorkerUrl()
     const code = joinCode.trim().toUpperCase()
 
-    console.log(`[Worker] connectToWorker called with code="${code}" (length: ${code.length})`)
-
     if (code.length < 4) {
-      console.log(`[Worker] Code too short, showing error...`)
       showToast("Enter a valid code (4+ chars)", "error")
       return
     }
 
+    if (isRemoteConnected && workerRef.current) {
+      console.log("[Worker] Already connected, skipping...")
+      return
+    }
+
+    disconnectWorker()
+    setIsConnecting(true)
+    setRemoteWaitingForAgent(false)
+    setRemoteConnectionFailed(false)
+
     try {
       const url = new URL(workerUrl)
-      url.searchParams.set('code', code)
-      url.searchParams.set('role', 'client')
-      
-      console.log(`[Worker] Connecting to: ${url.toString()}`)
+      url.searchParams.set("code", code)
+      url.searchParams.set("role", "client")
 
-      setIsConnecting(true)
-      setRemoteWaitingForAgent(false)
+      console.log("[Worker] Connecting to:", url.toString())
 
       const ws = new WebSocket(url.toString())
+      workerRef.current = ws
 
       ws.onopen = () => {
-        console.log(`[Worker] Socket open, sending register...`)
+        console.log("[Worker] Socket opened, sending register...")
         ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
-        console.log(`[Worker] Register sent: code=${code}, role=client`)
       }
 
       ws.onmessage = (event) => {
-        const rawData = event.data as string
-        console.log(`[Worker] Mensaje recibido del Worker: ${rawData}`)
-
-        let data
         try {
-          data = JSON.parse(rawData)
+          const data = JSON.parse(event.data as string)
+          console.log("[Worker] Received:", data.type)
+
+          if (data.type === "waiting") {
+            console.log("[Worker] Waiting for host...")
+            setRemoteWaitingForAgent(true)
+            setIsConnecting(false)
+            startRemoteTimeout()
+          } else if (data.type === "peer_connected") {
+            console.log("[Worker] Paired with host!")
+            setRemoteWaitingForAgent(false)
+            setIsRemoteConnected(true)
+            setConnected(true)
+            setConnectionMode("remote")
+            setIsConnecting(false)
+            setSettingsOpen(false)
+            setModalOpen(false)
+            showToast(strings.toasts.connected, "success")
+          } else if (data.type === "obs_data") {
+            console.log("[Worker] OBS data received:", data.scenes?.length, "scenes")
+            updateOBSData({
+              scenes: data.scenes,
+              inputs: data.inputs,
+            })
+            setSettingsOpen(false)
+            setModalOpen(false)
+          } else if (data.type === "error") {
+            console.error("[Worker] Error:", data.message)
+            showToast(data.message || strings.toasts.connectionError, "error")
+            setIsConnecting(false)
+          }
         } catch (e) {
-          console.error(`[Worker] Failed to parse message: ${e}`)
-          return
-        }
-
-        console.log(`[Worker] Processed: type=${data.type}`)
-
-        if (data.type === "waiting") {
-          console.log(`[Worker] Waiting for host...`)
-          setRemoteWaitingForAgent(true)
-          setIsConnecting(false)
-        } else if (data.type === "peer_connected") {
-          console.log(`[Worker] SUCCESS: paired, requesting update...`)
-          setRemoteWaitingForAgent(false)
-          setIsRemoteConnected(true)
-          setConnected(true)
-          setConnectionMode("remote")
-          setIsConnecting(false)
-          setSettingsOpen(false)
-          showToast(strings.toasts.connected, "success")
-          ws.send(JSON.stringify({ type: "request_update" }))
-          console.log(`[Worker] request_update sent`)
-        } else if (data.type === "obs_data") {
-          console.log(`[Worker] OBS data received: ${data.scenes?.length || 0} scenes, ${data.inputs?.length || 0} inputs`)
-          console.log(`[Worker] scenes: ${JSON.stringify(data.scenes)}`)
-          console.log(`[Worker] inputs: ${JSON.stringify(data.inputs)}`)
-          setHasOBSData(true)
-          setObsData((prev) => ({
-            ...prev,
-            scenes: data.scenes || prev.scenes,
-            inputs: data.inputs || prev.inputs,
-            allSources: [...(data.scenes || []), ...(data.inputs || [])].sort(),
-          }))
-        } else if (data.type === "obs_event") {
-          console.log(`[Worker] OBS event received`)
-        } else if (data.type === "error") {
-          console.error(`[Worker] Error from server: ${data.message}`)
-          showToast(data.message || strings.toasts.connectionError, "error")
-          setIsConnecting(false)
-        } else {
-          console.log(`[Worker] Unknown message type: ${data.type}`)
+          console.error("[Worker] Failed to parse message:", e)
         }
       }
 
       ws.onerror = (error) => {
-        console.error(`[Worker] WebSocket error:`, error)
+        console.error("[Worker] WebSocket error:", error)
         setIsConnecting(false)
         showToast(strings.toasts.connectionError, "error")
       }
 
-      ws.onclose = () => {
-        console.log(`[Worker] Disconnected`)
+      ws.onclose = (event) => {
+        console.log("[Worker] Disconnected:", event.code, event.reason)
         setIsRemoteConnected(false)
         workerRef.current = null
         if (!connected) {
           setConnected(false)
         }
       }
-
-      workerRef.current = ws
-
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error)
-      console.error(`[Worker] Connection failed: ${errorMsg}`)
+      console.error("[Worker] Connection failed:", error)
       setIsConnecting(false)
       showToast(strings.toasts.connectionError, "error")
     }
-  }, [joinCode, showToast, strings, connected])
+  }, [joinCode, showToast, strings, isRemoteConnected, connected, startRemoteTimeout, updateOBSData, disconnectWorker])
 
   const connectOBS = useCallback(async () => {
-    const currentRemoteMode = isRemoteModeRef.current
-    
-    if (currentRemoteMode) {
-      console.log(`[OBS] Remote mode is active, skipping local OBS connection`)
-      return
-    }
-    
-    console.log(`[OBS] Connecting to local OBS: ${wsUrl}`)
-    
-    if (obsRef.current && connected) {
-      console.log(`[OBS] Already connected to local OBS`)
-      return
-    }
-
     if (obsRef.current) {
       try {
-        await obsRef.current.disconnect()
+        obsRef.current.disconnect()
       } catch {}
       obsRef.current = null
     }
 
     setIsConnecting(true)
     setRemoteConnectionFailed(false)
+    setConnected(false)
+    setConnectionMode("none")
 
     const obs = new OBSWebSocket()
     obsRef.current = obs
@@ -417,8 +417,9 @@ export function OBSController() {
       await obs.connect(wsUrl, wsPassword || undefined, { rpcVersion: 1 })
       setConnected(true)
       setConnectionMode("local")
+      setSettingsOpen(false)
+      setModalOpen(false)
       showToast(strings.toasts.connected, "success")
-      console.log(`[OBS] Connected to local OBS successfully`)
 
       const special = await obs.call("GetSpecialInputs")
       setDeck((prev) =>
@@ -451,34 +452,29 @@ export function OBSController() {
         str: false,
       })
 
-      console.log(`[OBS] Scenes loaded: ${sceneList.scenes.length}`)
-
       const obsAdapter = new OBSWebSocketAdapter(obs)
       setAdapter(obsAdapter)
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
-    } catch (error) {
+    } catch {
       setConnected(false)
       setConnectionMode("none")
-      const errorMsg = error instanceof Error ? error.message : "Unknown error"
       showToast(strings.toasts.connectionError, "error")
-      console.error(`[OBS] Connection failed: ${errorMsg}`)
     } finally {
       setIsConnecting(false)
     }
-  }, [wsUrl, wsPassword, showToast, connected])
+  }, [wsUrl, wsPassword, showToast])
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
     const savedRemoteMode = localStorage.getItem("dfl_remote_mode")
-    
+
     if (savedUrl && savedRemoteMode !== "true") {
       connectOBS()
     }
   }, [])
 
-  // Sync states periodically
   useEffect(() => {
     if (!connected || !obsRef.current) return
 
@@ -517,11 +513,8 @@ export function OBSController() {
 
   const execute = useCallback(
     async (btn: DeckButton) => {
-      console.log(`[EXECUTE] Action=${btn.type} Target=${btn.target || ""} Mode=${connectionMode} HasData=${hasOBSData}`)
-
       if (connectionMode === "remote") {
         if (!hasOBSData) {
-          console.log(`[EXECUTE] Waiting for OBS data...`)
           showToast("Cargando datos de OBS...", "error")
           return
         }
@@ -534,7 +527,6 @@ export function OBSController() {
               ...(btn.filter && { filter: btn.filter }),
             },
           }
-          console.log(`[EXECUTE] Sending via Worker: ${JSON.stringify(command)}`)
           workerRef.current.send(JSON.stringify(command))
           return
         }
@@ -558,15 +550,11 @@ export function OBSController() {
           case "Scene":
             if (btn.target) {
               await obs.call("SetCurrentProgramScene", { sceneName: btn.target })
-            } else {
-              console.warn("[EXECUTE] Empty target for Scene action")
             }
             break
           case "Mute":
             if (btn.target) {
               await obs.call("ToggleInputMute", { inputName: btn.target })
-            } else {
-              console.warn("[EXECUTE] Empty target for Mute action")
             }
             break
           case "Filter":
@@ -580,13 +568,6 @@ export function OBSController() {
                 filterName: btn.filter,
                 filterEnabled: !filterEnabled,
               })
-            } else {
-              if (!btn.target) {
-                console.warn("[EXECUTE] Empty target for Filter action")
-              }
-              if (!btn.filter) {
-                console.warn("[EXECUTE] Empty filter for Filter action")
-              }
             }
             break
           case "Visibility":
@@ -609,68 +590,14 @@ export function OBSController() {
               } else {
                 showToast(strings.toasts.connectionError, "error")
               }
-            } else {
-              console.warn("[EXECUTE] Empty target for Visibility action")
             }
             break
         }
-      } catch (error) {
-        console.error("[EXECUTE] Action failed:", {
-          type: btn.type,
-          target: btn.target,
-          filter: btn.filter,
-          error: error instanceof Error ? error.message : String(error),
-        })
+      } catch {
         showToast(strings.toasts.connectionError, "error")
       }
     },
-    [connected, showToast, connectionMode, hasOBSData],
-  )
-
-  const executeContract = useCallback(
-    async (btn: DeckButton): Promise<boolean> => {
-      if (!obsRef.current || !connected) {
-        showToast(strings.toasts.connectionError, "error")
-        return false
-      }
-
-      const commandType: CommandType = btn.type.toLowerCase() as CommandType
-      const partialCommand = {
-        type: commandType,
-        target: btn.target,
-        filter: btn.filter,
-        timestamp: Date.now(),
-      }
-
-      const validation = validateCommand(partialCommand)
-      if (!validation.valid) {
-        console.warn(`[PHASE2] Validation failed: ${validation.reason}`)
-        return false
-      }
-
-      const command = createCommand(commandType, {
-        target: btn.target,
-        filter: btn.filter,
-      })
-
-      console.log(commandToString(command))
-
-      if (!adapter) {
-        console.error("[PHASE2] Adapter not initialized")
-        return false
-      }
-
-      const result = await adapter.execute(command)
-
-      if (!result.success) {
-        console.error(`[PHASE2] Command failed: ${result.error}`)
-        showToast(strings.toasts.connectionError, "error")
-        return false
-      }
-
-      return true
-    },
-    [connected, showToast, adapter],
+    [connected, showToast, connectionMode, hasOBSData, strings],
   )
 
   const loadFilters = useCallback(async (sourceName: string) => {
@@ -684,7 +611,6 @@ export function OBSController() {
         sourceName,
       })
       setFilters(filterList.map((f) => f.filterName as string))
-      console.log(`[OBS] Filters loaded: ${filterList.length} for source: ${sourceName}`)
     } catch {
       setFilters([])
     }
@@ -788,7 +714,7 @@ export function OBSController() {
     setDragOverIdx(null)
   }
 
-  const getTargetList = () => {
+  const getTargetList = useMemo(() => {
     switch (formData.type) {
       case "Scene":
         return obsData.scenes.map((s) => s.sceneName)
@@ -797,7 +723,7 @@ export function OBSController() {
       default:
         return obsData.allSources
     }
-  }
+  }, [formData.type, obsData.scenes, obsData.inputs, obsData.allSources])
 
   const needsTarget = !["Record", "Stream"].includes(formData.type)
 
@@ -809,31 +735,30 @@ export function OBSController() {
       )}
     >
       <div className="flex-1 flex flex-col">
-        {/* Header */}
         <header className={cn("sticky top-0 z-40 backdrop-blur-xl pb-2", isDark ? "bg-zinc-950/80" : "bg-zinc-50/80")}>
-          <div className="flex h-16 items-center justify-between px-4">
-            <div className="flex items-center gap-3">
-              <Logo className="h-12 w-12" />
-              <h1 className="text-xl font-bold tracking-tight">
+          <div className="flex h-20 items-center justify-between px-4">
+            <div className="flex items-center gap-4">
+              <Logo className="h-16 w-16" />
+              <h1 className="text-2xl font-bold tracking-tight">
                 DOCK<span className="text-blue-500">FORLIFE</span>
               </h1>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setSecurityOpen(true)}
                 className={cn(
-                  "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-colors",
+                  "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
                   isDark
                     ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
                     : "bg-green-100 text-green-600 hover:bg-green-200",
                 )}
               >
-                <Shield className="h-3 w-3" />
+                <Shield className="h-4 w-4" />
                 <span className="hidden sm:inline">Secure</span>
               </button>
               <div
                 className={cn(
-                  "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
+                  "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold",
                   isConnecting
                     ? isDark
                       ? "bg-amber-500/10 text-amber-400"
@@ -853,7 +778,7 @@ export function OBSController() {
               >
                 {isConnecting ? (
                   <>
-                    <div className="h-3 w-3 rounded-full bg-amber-400 animate-pulse" />
+                    <Loader2 className="h-3 w-3 animate-spin" />
                     <span className="hidden sm:inline">CONNECTING</span>
                   </>
                 ) : connected ? (
@@ -880,11 +805,11 @@ export function OBSController() {
                   </>
                 )}
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsDark(!isDark)}>
-                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setIsDark(!isDark)}>
+                {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSettingsOpen(true)}>
-                <Settings className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setSettingsOpen(true)}>
+                <Settings className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -904,7 +829,15 @@ export function OBSController() {
           </div>
         )}
 
-        {/* Main Grid */}
+        {connectionMode === "remote" && !hasOBSData && (
+          <div className={cn("px-4 py-6 text-center text-sm", isDark ? "bg-blue-500/10 text-blue-400" : "bg-blue-50 text-blue-600")}>
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{strings.toasts.waitingForOBS}</span>
+            </div>
+          </div>
+        )}
+
         <main className="flex-1 container max-w-5xl mx-auto px-6 py-8">
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 gap-4">
             {deck.map((btn, i) => {
@@ -934,63 +867,64 @@ export function OBSController() {
                   )}
                 >
                   <button
-                  className={cn(
-                    "w-full h-24 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all relative overflow-hidden shadow-lg",
-                    "active:scale-95 hover:scale-[1.02]",
-                    isMuted && "opacity-50",
-                  )}
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                  }}
-                  onClick={() => execute(btn)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    openModal(i)
-                  }}
-                  onTouchStart={() => handleLongPressStart(i)}
-                  onTouchEnd={handleLongPressEnd}
-                  onMouseDown={() => handleLongPressStart(i)}
-                  onMouseUp={handleLongPressEnd}
-                  onMouseLeave={handleLongPressEnd}
-                >
-                  <div className="relative">
-                    {getIcon(btn.type)}
-                    {isMuted && <VolumeX className="absolute -top-1 -right-1 h-4 w-4" style={{ color: textColor }} />}
-                  </div>
-                  <span className="text-sm sm:text-base font-bold uppercase text-center px-2 leading-tight">
-                    {btn.label}
-                  </span>
-                  {isActive && (
-                    <span
-                      className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full animate-pulse"
-                      style={{ backgroundColor: textColor }}
-                    />
-                  )}
-                </button>
-              </div>
-            )
-          })}
+                    className={cn(
+                      "w-full h-24 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all relative overflow-hidden shadow-lg",
+                      "active:scale-95 hover:scale-[1.02]",
+                      isMuted && "opacity-50",
+                    )}
+                    style={{
+                      backgroundColor: bgColor,
+                      color: textColor,
+                    }}
+                    onClick={() => execute(btn)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      openModal(i)
+                    }}
+                    onTouchStart={() => handleLongPressStart(i)}
+                    onTouchEnd={handleLongPressEnd}
+                    onMouseDown={() => handleLongPressStart(i)}
+                    onMouseUp={handleLongPressEnd}
+                    onMouseLeave={handleLongPressEnd}
+                    aria-label={`${btn.label} button`}
+                  >
+                    <div className="relative">
+                      {getIcon(btn.type)}
+                      {isMuted && <VolumeX className="absolute -top-1 -right-1 h-4 w-4" style={{ color: textColor }} />}
+                    </div>
+                    <span className="text-sm sm:text-base font-bold uppercase text-center px-2 leading-tight">
+                      {btn.label}
+                    </span>
+                    {isActive && (
+                      <span
+                        className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full animate-pulse"
+                        style={{ backgroundColor: textColor }}
+                      />
+                    )}
+                  </button>
+                </div>
+              )
+            })}
 
-          {/* Add Button */}
-          <button
-            className={cn(
-              "aspect-square rounded-xl sm:rounded-2xl border-2 border-dashed flex items-center justify-center transition-all",
-              isDark
-                ? "border-zinc-800 opacity-40 hover:opacity-100 hover:border-blue-500 hover:text-blue-500"
-                : "border-zinc-300 opacity-40 hover:opacity-100 hover:border-blue-500 hover:text-blue-500",
-            )}
-            onClick={() => openModal(deck.length)}
-          >
-            <Plus className="h-6 w-6 sm:h-8 sm:w-8" />
-          </button>
-        </div>
-      </main>
+            <button
+              className={cn(
+                "aspect-square rounded-xl sm:rounded-2xl border-2 border-dashed flex items-center justify-center transition-all",
+                isDark
+                  ? "border-zinc-800 opacity-40 hover:opacity-100 hover:border-blue-500 hover:text-blue-500"
+                  : "border-zinc-300 opacity-40 hover:opacity-100 hover:border-blue-500 hover:text-blue-500",
+              )}
+              onClick={() => openModal(deck.length)}
+              aria-label="Add new button"
+            >
+              <Plus className="h-6 w-6 sm:h-8 sm:w-8" />
+            </button>
+          </div>
+        </main>
+      </div>
 
-      {/* Footer */}
-      <footer className={cn("py-6 px-4 border-t", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-zinc-100/50 border-zinc-200")}>
+      <footer className={cn("py-8 px-4 border-t", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-zinc-100/50 border-zinc-200")}>
         <div className="flex flex-col items-center gap-4">
-          <Logo className="h-12 w-12 opacity-40" />
+          <Logo className="h-16 w-16 opacity-40" />
 
           <a
             href="https://paypal.me/daurydicaprio"
@@ -1019,41 +953,34 @@ export function OBSController() {
                 Daury DiCaprio
               </a>
             </p>
-            <p className={cn("text-xs font-medium", isDark ? "text-zinc-600" : "text-zinc-400")}>
+            <p className={cn("text-sm font-bold", isDark ? "text-zinc-500" : "text-zinc-400")}>
               v1.0.0-beta
             </p>
           </div>
         </div>
       </footer>
-      </div>
 
-      {/* Onboarding Modal */}
       <Dialog open={onboardingOpen} onOpenChange={setOnboardingOpen}>
         <DialogContent
           className={cn(
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
-          aria-describedby="onboarding-description"
         >
           <DialogHeader>
             <div className="flex items-center justify-center mb-4">
-              <Logo className="h-12 w-12" />
+              <Logo className="h-16 w-16" />
             </div>
             <DialogTitle className="text-center text-xl">
-              Bienvenido a DOCK<span className="text-blue-500">FORLIFE</span>
+              Welcome to DOCK<span className="text-blue-500">FORLIFE</span>
             </DialogTitle>
+            <DialogDescription className="text-center text-sm text-zinc-500">
+              Control OBS from any device on your local network
+            </DialogDescription>
           </DialogHeader>
-          <div id="onboarding-description" className="sr-only">
-            Modal de bienvenida para nuevos usuarios de DockForLife
-          </div>
           <div className="space-y-4 py-4">
-            <p className={cn("text-sm text-center", isDark ? "text-zinc-400" : "text-zinc-600")}>
-              Controla OBS desde cualquier dispositivo en tu red local
-            </p>
-
             <div className="space-y-3">
-              <h4 className="font-semibold text-sm">Requisitos:</h4>
+              <h4 className="font-semibold text-sm">Requirements:</h4>
 
               <div className="space-y-2">
                 <div className="flex items-start gap-3">
@@ -1063,9 +990,9 @@ export function OBSController() {
                     <XCircle className={cn("h-5 w-5 shrink-0 mt-0.5", isDark ? "text-zinc-600" : "text-zinc-400")} />
                   )}
                   <div>
-                    <p className="text-sm font-medium">OBS Studio abierto</p>
+                    <p className="text-sm font-medium">OBS Studio running</p>
                     <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                      Asegurate de tener OBS ejecutandose
+                      Make sure OBS is open and running
                     </p>
                   </div>
                 </div>
@@ -1077,9 +1004,9 @@ export function OBSController() {
                     <XCircle className={cn("h-5 w-5 shrink-0 mt-0.5", isDark ? "text-zinc-600" : "text-zinc-400")} />
                   )}
                   <div>
-                    <p className="text-sm font-medium">WebSocket Server activo</p>
+                    <p className="text-sm font-medium">WebSocket Server enabled</p>
                     <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                      En OBS: Herramientas &gt; Configuracion de WebSocket Server
+                      In OBS: Tools &gt; WebSocket Server Settings
                     </p>
                   </div>
                 </div>
@@ -1087,9 +1014,9 @@ export function OBSController() {
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium">Puerto 4455 (por defecto)</p>
+                    <p className="text-sm font-medium">Port 4455 (default)</p>
                     <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                      Puedes cambiarlo en configuracion
+                      You can change this in settings
                     </p>
                   </div>
                 </div>
@@ -1101,9 +1028,9 @@ export function OBSController() {
                   isDark ? "bg-blue-500/10 text-blue-400" : "bg-blue-50 text-blue-600",
                 )}
               >
-                <p className="font-medium mb-1">Para usar desde otro dispositivo:</p>
-                <p>Usa la IP de tu PC en lugar de 127.0.0.1</p>
-                <p className="mt-1 opacity-75">Ejemplo: ws://192.168.1.100:4455</p>
+                <p className="font-medium mb-1">To use from another device:</p>
+                <p>Use your PC IP instead of 127.0.0.1</p>
+                <p className="mt-1 opacity-75">Example: ws://192.168.1.100:4455</p>
               </div>
             </div>
           </div>
@@ -1115,35 +1042,33 @@ export function OBSController() {
               }}
               className="w-full"
             >
-              Configurar conexion
+              Configure Connection
             </Button>
             <Button variant="ghost" onClick={() => setOnboardingOpen(false)} className="w-full">
-              Entendido
+              Got it
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Security Info Modal */}
       <Dialog open={securityOpen} onOpenChange={setSecurityOpen}>
         <DialogContent
           className={cn(
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
-          aria-describedby="security-description"
         >
           <DialogHeader>
             <div className="flex items-center justify-center mb-4">
-              <div className={cn("p-3 rounded-full", isDark ? "bg-green-500/10" : "bg-green-100")}>
-                <Shield className="h-8 w-8 text-green-500" />
+              <div className={cn("p-4 rounded-full", isDark ? "bg-green-500/10" : "bg-green-100")}>
+                <Shield className="h-10 w-10 text-green-500" />
               </div>
             </div>
-            <DialogTitle className="text-center text-xl">Seguridad y Privacidad</DialogTitle>
+            <DialogTitle className="text-center text-xl">Security & Privacy</DialogTitle>
+            <DialogDescription className="text-center text-sm text-zinc-500">
+              Important information about how DockForLife protects your data
+            </DialogDescription>
           </DialogHeader>
-          <div id="security-description" className="sr-only">
-            Información sobre seguridad y privacidad de DockForLife
-          </div>
           <div className="space-y-4 py-4">
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -1153,8 +1078,7 @@ export function OBSController() {
                 <div>
                   <p className="text-sm font-medium">100% Local</p>
                   <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    Todos tus datos se almacenan SOLO en tu dispositivo usando localStorage. No usamos servidores
-                    externos.
+                    All data is stored ONLY on your device using localStorage. No external servers.
                   </p>
                 </div>
               </div>
@@ -1164,9 +1088,9 @@ export function OBSController() {
                   <Lock className="h-4 w-4 text-green-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Sin recoleccion de datos</p>
+                  <p className="text-sm font-medium">No data collection</p>
                   <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    No recopilamos, almacenamos ni transmitimos ninguna informacion personal o de uso.
+                    We do not collect, store, or transmit any personal or usage information.
                   </p>
                 </div>
               </div>
@@ -1176,194 +1100,22 @@ export function OBSController() {
                   <Wifi className="h-4 w-4 text-purple-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Conexion directa</p>
+                  <p className="text-sm font-medium">Direct connection</p>
                   <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    La app se conecta directamente a OBS en tu red local. No hay intermediarios.
+                    The app connects directly to OBS on your local network. No intermediaries.
                   </p>
                 </div>
               </div>
-
-              <div className="flex items-start gap-3">
-                <div className={cn("p-2 rounded-lg shrink-0", isDark ? "bg-zinc-800" : "bg-zinc-100")}>
-                  <Globe className="h-4 w-4 text-orange-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Funciona offline</p>
-                  <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    Una vez instalada, la app funciona sin internet. Solo necesitas conexion a tu red local para OBS.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className={cn("p-3 rounded-lg text-xs text-center", isDark ? "bg-zinc-800" : "bg-zinc-100")}>
-              <p className={isDark ? "text-zinc-400" : "text-zinc-600"}>
-                Tu configuracion y botones se guardan localmente. Puedes borrarlos en cualquier momento limpiando los
-                datos del sitio.
-              </p>
             </div>
           </div>
           <DialogFooter>
             <Button onClick={() => setSecurityOpen(false)} className="w-full">
-              Entendido
+              Got it
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Button Config Modal */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent
-          className={cn(
-            "sm:max-w-md backdrop-blur-xl border",
-            isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
-          )}
-          aria-describedby="button-config-description"
-        >
-          <DialogHeader>
-            <DialogTitle>Configurar boton</DialogTitle>
-          </DialogHeader>
-          <div id="button-config-description" className="sr-only">
-            Modal para configurar las propiedades del botón del deck
-          </div>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="label">Etiqueta</Label>
-              <Input
-                id="label"
-                value={formData.label}
-                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                placeholder="Nombre del boton"
-                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Accion</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(value: ButtonType) => {
-                  setFormData({ ...formData, type: value, target: "", filter: "" })
-                  setFilters([])
-                }}
-              >
-                <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Mute">Silenciar Audio</SelectItem>
-                  <SelectItem value="Visibility">Alternar Visibilidad</SelectItem>
-                  <SelectItem value="Filter">Alternar Filtro</SelectItem>
-                  <SelectItem value="Scene">Cambiar Escena</SelectItem>
-                  <SelectItem value="Record">Grabar</SelectItem>
-                  <SelectItem value="Stream">Transmitir</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {needsTarget && (
-              <div className="space-y-2">
-                <Label>Objetivo</Label>
-                <Select
-                  value={formData.target || ""}
-                  onValueChange={(value) => {
-                    setFormData({ ...formData, target: value, filter: "" })
-                    if (formData.type === "Filter") {
-                      loadFilters(value)
-                    }
-                  }}
-                >
-                  <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
-                    <SelectValue placeholder="Seleccionar objetivo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getTargetList().map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.type === "Filter" && (
-              <div className="space-y-2">
-                <Label>Filtro</Label>
-                <Select
-                  value={formData.filter || ""}
-                  onValueChange={(value) => setFormData({ ...formData, filter: value })}
-                >
-                  <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
-                    <SelectValue placeholder="Seleccionar filtro" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filters.map((f) => (
-                      <SelectItem key={f} value={f}>
-                        {f}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Color</Label>
-              <div className="flex gap-2 flex-wrap">
-                {COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    className={cn(
-                      "h-8 w-8 rounded-lg border-2 transition-all",
-                      formData.color === c.value
-                        ? "border-blue-500 ring-2 ring-blue-500 ring-offset-2"
-                        : isDark
-                          ? "border-zinc-700"
-                          : "border-zinc-300",
-                      isDark ? "ring-offset-zinc-900" : "ring-offset-white",
-                    )}
-                    style={{ backgroundColor: c.value }}
-                    onClick={() => setFormData({ ...formData, color: c.value })}
-                  />
-                ))}
-                <Input
-                  type="color"
-                  value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  className="h-8 w-8 p-0 border-0 cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-col">
-            <Button onClick={saveButton} className="w-full">
-              Guardar
-            </Button>
-            {currentIdx !== null && currentIdx < deck.length && (
-              <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)} className="w-full">
-                Eliminar
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className={isDark ? "bg-zinc-900 border-zinc-800" : ""}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar boton?</AlertDialogTitle>
-            <AlertDialogDescription>Esta accion no se puede deshacer.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={deleteButton}>Eliminar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Settings Modal */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent
           id="settings-dialog"
@@ -1371,15 +1123,14 @@ export function OBSController() {
             "sm:max-w-md backdrop-blur-xl border",
             isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
           )}
-          aria-describedby="settings-description"
         >
           <DialogHeader>
             <DialogTitle>{isClientMode ? strings.agent.title : strings.settings.title}</DialogTitle>
+            <DialogDescription className="text-sm text-zinc-500">
+              {isClientMode ? strings.agent.desc : strings.settings.remoteModeDesc}
+            </DialogDescription>
           </DialogHeader>
-          <div id="settings-description" className="sr-only">
-            Configuración de conexión OBS y modo remoto
-          </div>
-          
+
           {isClientMode ? (
             <div className="space-y-6 py-4">
               <div className="space-y-4">
@@ -1405,7 +1156,6 @@ export function OBSController() {
                 disabled={joinCode.length < 4 || isConnecting}
                 onClick={() => {
                   if (connected && obsRef.current) {
-                    console.log(`[UI] Disconnecting local OBS before Remote connection...`)
                     try {
                       obsRef.current.disconnect()
                     } catch {}
@@ -1469,217 +1219,277 @@ export function OBSController() {
                   {strings.settings.joinCodeHint}
                 </p>
               </div>
-              <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
-                <Label htmlFor="ws-pass">{strings.settings.password}</Label>
-                <Input
-                  id="ws-pass"
-                  type="password"
-                  value={wsPassword}
-                  onChange={(e) => setWsPassword(e.target.value)}
-                  placeholder={strings.settings.passwordPlaceholder}
-                  disabled={isRemoteMode}
-                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", isRemoteMode && "opacity-50 cursor-not-allowed")}
-                />
-              </div>
 
-              <div
-                className={cn(
-                  "flex items-center justify-between p-3 rounded-lg border",
-                  isRemoteMode
-                    ? isDark
-                      ? "bg-blue-500/10 border-blue-500/30"
-                      : "bg-blue-50 border-blue-200"
-                    : isDark
-                      ? "bg-zinc-800/50 border-zinc-700"
-                      : "bg-zinc-50 border-zinc-200",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "flex items-center justify-center w-10 h-10 rounded-full",
-                      isRemoteMode
-                        ? "bg-blue-500/20"
-                        : isDark
-                          ? "bg-zinc-700"
-                          : "bg-zinc-200",
-                    )}
-                  >
-                    <Globe className={cn("h-5 w-5", isRemoteMode ? "text-blue-400" : isDark ? "text-zinc-500" : "text-zinc-400")} />
-                  </div>
-                  <div>
-                    <Label htmlFor="remote-mode" className="cursor-pointer">
-                      {strings.settings.remoteMode}
-                    </Label>
-                    <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                      {isRemoteMode ? strings.settings.remoteModeDesc : strings.settings.localModeDesc}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  id="remote-mode"
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
                   onClick={() => {
-                    const newValue = !isRemoteMode
-                    
-                    if (newValue) {
-                      console.log(`[UI] Switching to Remote mode - cancelling local OBS...`)
-                      if (obsRef.current) {
-                        try {
-                          obsRef.current.disconnect()
-                        } catch {}
-                        obsRef.current = null
-                      }
-                    } else {
-                      console.log(`[UI] Switching to Local mode - cancelling worker...`)
-                      if (workerRef.current) {
-                        try {
-                          workerRef.current.close()
-                        } catch {}
-                        workerRef.current = null
-                      }
-                    }
-                    
-                    setConnected(false)
-                    setIsRemoteConnected(false)
-                    setIsRemoteMode(newValue)
-                    setConnectionMode("none")
-                    localStorage.setItem("dfl_remote_mode", String(newValue))
-                    
-                    showToast(newValue ? strings.toasts.remoteEnabled : strings.toasts.localEnabled, "success")
-                    
-                    if (newValue && joinCode.trim()) {
-                      console.log(`[UI] Auto-connecting to Worker...`)
-                      connectToWorker()
-                    }
+                    console.log("[UI] Switching to Local mode...")
+                    disconnectWorker()
+                    setIsRemoteMode(false)
+                    connectOBS()
                   }}
-                  className={cn(
-                    "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
-                    isRemoteMode ? "bg-blue-500" : "bg-zinc-600",
-                  )}
+                  disabled={isConnecting && !isRemoteMode}
                 >
-                  <span
-                    className={cn(
-                      "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
-                      isRemoteMode ? "translate-x-6" : "translate-x-1",
-                    )}
-                  />
-                </button>
+                  {isConnecting && !isRemoteMode ? strings.settings.connecting : strings.settings.local}
+                </Button>
+                <Button
+                  variant={isRemoteMode ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => {
+                    console.log("[UI] Switching to Remote mode...")
+                    disconnectWorker()
+                    setIsRemoteMode(true)
+                    connectToWorker()
+                  }}
+                  disabled={isConnecting && isRemoteMode}
+                >
+                  {isConnecting && isRemoteMode ? strings.settings.connecting : strings.settings.remote}
+                </Button>
               </div>
 
-              <div className="space-y-2">
+              <div className={cn("pt-4 border-t", isDark ? "border-zinc-800" : "border-zinc-200")}>
                 <Label>{strings.settings.language}</Label>
-                <Select
-                  value={lang}
-                  onValueChange={(value: Language) => {
-                    setLang(value)
-                    setStrings(getLocaleStrings(value))
-                    localStorage.setItem("dfl_lang", value)
-                    showToast(strings.toasts.langChanged, "success")
-                  }}
-                >
-                  <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">
-                      <span className="flex items-center gap-2">
-                        <span className="text-lg">🇺🇸</span> {strings.settings.languageEn}
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="es">
-                      <span className="flex items-center gap-2">
-                        <span className="text-lg">🇪🇸</span> {strings.settings.languageEs}
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div
-                className={cn(
-                  "rounded-lg p-4",
-                  isDark ? "bg-zinc-800/50" : "bg-zinc-50",
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <Monitor className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-600")} />
-                  <h3 className="font-semibold text-sm">{strings.settings.desktopAgent}</h3>
-                </div>
-                <p className={cn("text-xs mb-3", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                  {strings.settings.desktopAgentDesc}
-                </p>
-                {userOS !== "other" && (
+                <div className="flex gap-2 mt-2">
                   <Button
-                    size="sm"
-                    onClick={() => window.open(getGitHubReleaseUrl(), "_blank")}
-                    className="w-full"
+                    variant={lang === "en" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => {
+                      setLang("en")
+                      setStrings(getLocaleStrings("en"))
+                      localStorage.setItem("dfl_lang", "en")
+                    }}
                   >
-                    <Download className="h-4 w-4 mr-2" />
-                    {strings.settings.download} {userOS === "linux" ? "Linux" : userOS === "macos" ? "macOS" : "Windows"}
+                    English
                   </Button>
-                )}
+                  <Button
+                    variant={lang === "es" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => {
+                      setLang("es")
+                      setStrings(getLocaleStrings("es"))
+                      localStorage.setItem("dfl_lang", "es")
+                    }}
+                  >
+                    Español
+                  </Button>
+                </div>
               </div>
 
-              <div
-                className={cn(
-                  "rounded-lg p-4 border",
-                  connected
-                    ? isDark
-                      ? "bg-green-500/10 border-green-500/30"
-                      : "bg-green-50 border-green-200"
-                    : isDark
-                      ? "bg-zinc-800/50 border-zinc-700"
-                      : "bg-zinc-50 border-zinc-200",
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  {connected ? (
-                    <>
-                      <CheckCircle2 className={cn("h-4 w-4", isDark ? "text-green-400" : "text-green-600")} />
-                      <span className={cn("text-sm font-medium", isDark ? "text-green-400" : "text-green-600")}>
-                        {strings.settings.status.connected}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className={cn("h-4 w-4", isDark ? "text-zinc-500" : "text-zinc-400")} />
-                      <span className={cn("text-sm", isDark ? "text-zinc-400" : "text-zinc-600")}>
-                        {strings.settings.status.notConnected}
-                      </span>
-                    </>
-                  )}
+              <div className={cn("pt-4 border-t", isDark ? "border-zinc-800" : "border-zinc-200")}>
+                <Label>{strings.agent.title}</Label>
+                <p className={cn("text-xs mt-1 mb-3", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                  {strings.agent.desc}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => window.open(getGitHubReleaseUrl(), "_blank")}
+                  >
+                    Linux
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => window.open(getGitHubReleaseUrl(), "_blank")}
+                  >
+                    macOS
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => window.open(getGitHubReleaseUrl(), "_blank")}
+                  >
+                    Windows
+                  </Button>
                 </div>
+                <p className={cn("text-xs mt-2 italic", isDark ? "text-zinc-600" : "text-zinc-400")}>
+                  {strings.agent.note}
+                </p>
               </div>
             </div>
-          )}
-          {!isClientMode && (
-            <DialogFooter>
-              <Button
-                onClick={() => {
-                  if (isRemoteMode) {
-                    console.log(`[OBS] Remote mode active, using Worker...`)
-                    connectToWorker()
-                  } else {
-                    console.log(`[OBS] Local mode, connecting to OBS...`)
-                    connectOBS()
-                  }
-                }}
-                className="w-full"
-                disabled={isConnecting}
-              >
-                {isConnecting ? strings.settings.connecting : connected ? strings.settings.button : strings.settings.button}
-              </Button>
-            </DialogFooter>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Toast */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent
+          className={cn(
+            "sm:max-w-sm backdrop-blur-xl border",
+            isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
+          )}
+        >
+          <DialogHeader>
+            <DialogTitle>{currentIdx !== null ? strings.dialogs.editTitle : strings.dialogs.addTitle}</DialogTitle>
+            <DialogDescription className="text-sm text-zinc-500">
+              {currentIdx !== null ? "Edit button properties" : "Create a new button"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="label">Label</Label>
+              <Input
+                id="label"
+                value={formData.label}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Button name"
+                className={isDark ? "bg-zinc-800 border-zinc-700" : ""}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Action</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(value: ButtonType) => {
+                  setFormData({ ...formData, type: value, target: "", filter: "" })
+                  setFilters([])
+                }}
+              >
+                <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Mute">Mute Audio</SelectItem>
+                  <SelectItem value="Visibility">Toggle Visibility</SelectItem>
+                  <SelectItem value="Filter">Toggle Filter</SelectItem>
+                  <SelectItem value="Scene">Change Scene</SelectItem>
+                  <SelectItem value="Record">Record</SelectItem>
+                  <SelectItem value="Stream">Stream</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {needsTarget && (
+              <div className="space-y-2">
+                <Label>Target</Label>
+                <Select
+                  value={formData.target || ""}
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, target: value, filter: "" })
+                    if (formData.type === "Filter") {
+                      loadFilters(value)
+                    }
+                  }}
+                >
+                  <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
+                    <SelectValue placeholder="Select target" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getTargetList.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {formData.type === "Filter" && (
+              <div className="space-y-2">
+                <Label>Filter</Label>
+                <Select
+                  value={formData.filter || ""}
+                  onValueChange={(value) => setFormData({ ...formData, filter: value })}
+                >
+                  <SelectTrigger className={isDark ? "bg-zinc-800 border-zinc-700" : ""}>
+                    <SelectValue placeholder="Select filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filters.map((f) => (
+                      <SelectItem key={f} value={f}>
+                        {f}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <div className="flex gap-2 flex-wrap">
+                {COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    className={cn(
+                      "h-10 w-10 rounded-lg border-2 transition-all",
+                      formData.color === c.value
+                        ? "border-blue-500 ring-2 ring-blue-500 ring-offset-2"
+                        : isDark
+                          ? "border-zinc-700"
+                          : "border-zinc-300",
+                      isDark ? "ring-offset-zinc-900" : "ring-offset-white",
+                    )}
+                    style={{ backgroundColor: c.value }}
+                    onClick={() => setFormData({ ...formData, color: c.value })}
+                    aria-label={`Select ${c.label} color`}
+                  />
+                ))}
+                <Input
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="h-10 w-10 p-0 border-0 cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:flex-row">
+            {currentIdx !== null && (
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                Delete
+              </Button>
+            )}
+            <Button className="flex-1" onClick={saveButton}>
+              {strings.dialogs.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent
+          className={cn(
+            "sm:max-w-sm backdrop-blur-xl border",
+            isDark ? "bg-zinc-900/95 border-zinc-800" : "bg-white/95 border-zinc-200",
+          )}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>{strings.dialogs.deleteTitle}</AlertDialogTitle>
+            <AlertDialogDesc>{strings.dialogs.deleteDesc}</AlertDialogDesc>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex gap-2 sm:flex-row">
+            <AlertDialogCancel className="flex-1">{strings.dialogs.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="flex-1 bg-red-600 hover:bg-red-700" onClick={deleteButton}>
+              {strings.dialogs.delete}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {toast && (
         <div
           className={cn(
-            "fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium z-50 shadow-lg",
-            toast.type === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white",
+            "fixed bottom-24 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg animate-fade-in z-50",
+            toast.type === "success"
+              ? isDark
+                ? "bg-green-500/90 text-white"
+                : "bg-green-500 text-white"
+              : isDark
+                ? "bg-red-500/90 text-white"
+                : "bg-red-500 text-white",
           )}
         >
           {toast.message}
