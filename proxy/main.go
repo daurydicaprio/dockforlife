@@ -254,9 +254,9 @@ func (a *Agent) handleOBSMessages() {
 				requestType, _ := respData["requestType"].(string)
 
 				if errorMsg, ok := respData["error"].(string); ok {
-					fmt.Printf("[OBS] ERROR: %s para %s: %s\n", requestType, requestId, errorMsg)
-				} else if comment, ok := respData["comment"].(string); ok {
-					fmt.Printf("[OBS] OK: %s %s - %s\n", requestType, requestId, comment)
+					fmt.Printf("[OBS] ERROR: %s - %s\n", requestType, errorMsg)
+				} else if requestType != "" {
+					fmt.Printf("[OBS] OK: %s completado\n", requestType)
 				}
 
 				if ch, ok := a.getPendingRequest(requestId); ok {
