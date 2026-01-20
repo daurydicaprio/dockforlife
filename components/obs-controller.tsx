@@ -1343,12 +1343,6 @@ export function OBSController() {
           
           {isClientMode ? (
             <div className="space-y-6 py-4">
-              <div className="text-center space-y-2">
-                <p className={cn("text-sm", isDark ? "text-zinc-400" : "text-zinc-600")}>
-                  {strings.agent.desc}
-                </p>
-              </div>
-
               <div className="space-y-4">
                 <Label htmlFor="client-join-code" className="text-center block text-lg font-medium">
                   {strings.settings.joinCode}
@@ -1413,44 +1407,18 @@ export function OBSController() {
 
               <div className={cn("space-y-2", !isRemoteMode && "opacity-50")}>
                 <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="join-code"
-                    value={isRemoteMode ? autoJoinCode || joinCode : joinCode}
-                    onChange={(e) => {
-                      setJoinCode(e.target.value)
-                      setAutoJoinCode("")
-                    }}
-                    placeholder={strings.settings.joinCodePlaceholder}
-                    disabled={!isRemoteMode}
-                    className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "opacity-50 cursor-not-allowed")}
-                  />
-                  {isRemoteMode && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        const code = generateJoinCode()
-                        setAutoJoinCode(code)
-                        setJoinCode(code)
-                        navigator.clipboard.writeText(code)
-                        showToast(strings.toasts.codeGenerated, "success")
-                        console.log(`[UI] Auto-generated join code: ${code}`)
-                      }}
-                      className="shrink-0"
-                    >
-                      {strings.settings.generateCode}
-                    </Button>
-                  )}
-                </div>
-                {isRemoteMode && autoJoinCode && (
-                  <div className={cn("p-3 rounded-lg text-center font-mono text-lg tracking-wider", isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-50 text-blue-600")}>
-                    {autoJoinCode}
-                  </div>
-                )}
-                  <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                    {isRemoteMode ? strings.settings.shareCode : strings.settings.joinCodeHint}
-                  </p>
+                <Input
+                  id="join-code"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder={strings.settings.joinCodePlaceholder}
+                  maxLength={12}
+                  disabled={!isRemoteMode}
+                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "opacity-50 cursor-not-allowed")}
+                />
+                <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
+                  {isRemoteMode ? strings.settings.shareCode : strings.settings.joinCodeHint}
+                </p>
               </div>
               <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
                 <Label htmlFor="ws-pass">{strings.settings.password}</Label>
