@@ -364,6 +364,23 @@ export function OBSController() {
               scenes: data.scenes,
               inputs: data.inputs,
             })
+            setDeck((prev) =>
+              prev.map((btn) => {
+                if (btn.type === "Mute") {
+                  if (btn.target === "Desktop Audio" || btn.target === "Audio del escritorio") {
+                    const found = data.inputs?.find((i: string) => 
+                      i.toLowerCase().includes("desktop") || i.toLowerCase().includes("audio"))
+                    if (found) return { ...btn, target: found }
+                  }
+                  if (btn.target === "Mic/Aux" || btn.target === "Mic") {
+                    const found = data.inputs?.find((i: string) => 
+                      i.toLowerCase().includes("mic") || i.toLowerCase().includes("aux"))
+                    if (found) return { ...btn, target: found }
+                  }
+                }
+                return btn
+              }),
+            )
             setSettingsOpen(false)
             setModalOpen(false)
           } else if (data.type === "error") {
