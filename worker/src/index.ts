@@ -33,6 +33,8 @@ export default {
 export class RelaySession {
   private hostSocket: WebSocket | null = null
   private clientSocket: WebSocket | null = null
+  private hostRegistered = false
+  private clientRegistered = false
   private code: string = ""
 
   constructor(private state: DurableObjectState) {}
@@ -48,7 +50,9 @@ export class RelaySession {
 
       serverSocket.accept()
 
-      if (role === "host") {
+      const isHost = role === "host"
+      
+      if (isHost) {
         this.hostSocket = serverSocket
       } else {
         this.clientSocket = serverSocket
@@ -57,21 +61,46 @@ export class RelaySession {
       serverSocket.addEventListener("message", (e: MessageEvent) => {
         try {
           const data = e.data as string
-          const peer = role === "host" ? this.clientSocket : this.hostSocket
+          const parsed = JSON.parse(data)
 
-          if (peer && peer.readyState === WebSocket.OPEN) {
-            peer.send(data)
+          if (parsed.type === "register") {
+            if (isHost) {
+              this.hostRegistered = true
+            } else {
+              this.clientRegistered = true
+            }
+
+            const peer = isHost ? this.clientSocket : this.hostSocket
+
+            if (peer && (this.hostRegistered && this.clientRegistered)) {
+              serverSocket.send(JSON.stringify({ type: "peer_connected" }))
+              peer.send(JSON.stringify({ type: "peer_connected" }))
+              console.log(`[Relay] PAIRED: ${this.code}`)
+            } else {
+              serverSocket.send(JSON.stringify({ type: "waiting" }))
+              console.log(`[Relay] Waiting: ${this.code} (host:${this.hostRegistered} client:${this.clientRegistered})`)
+            }
+            return
+          }
+
+          if (this.hostRegistered && this.clientRegistered) {
+            const peer = isHost ? this.clientSocket : this.hostSocket
+            if (peer && peer.readyState === WebSocket.OPEN) {
+              peer.send(data)
+            }
           }
         } catch (err) {
-          console.log(`[Relay] Forward error: ${err}`)
+          console.log(`[Relay] Error: ${err}`)
         }
       })
 
       serverSocket.addEventListener("close", () => {
-        if (role === "host") {
+        if (isHost) {
           this.hostSocket = null
+          this.hostRegistered = false
         } else {
           this.clientSocket = null
+          this.clientRegistered = false
         }
       })
 
