@@ -385,16 +385,20 @@ func (a *Agent) sendStatusUpdate() {
 		strActive = true
 	}
 
-	desktopMuted, _ := a.callOBSWithParam("GetInputMute", "inputName", "Audio del escritorio")
-	micMuted, _ := a.callOBSWithParam("GetInputMute", "inputName", "Mic/Aux")
+	inputs, _ := a.callOBS("GetInputList")
+
+	muteStates := make(map[string]bool)
+	for _, inputName := range inputs {
+		muted, _ := a.callOBSWithParam("GetInputMute", "inputName", inputName)
+		muteStates[inputName] = muted
+	}
 
 	statusData := map[string]interface{}{
-		"type":   "obs_status",
-		"rec":    recActive,
-		"str":    strActive,
-		"mute":   desktopMuted,
-		"mic":    micMuted,
-		"status": "ok",
+		"type":       "obs_status",
+		"rec":        recActive,
+		"str":        strActive,
+		"muteStates": muteStates,
+		"status":     "ok",
 	}
 
 	a.mu.Lock()
