@@ -1350,7 +1350,7 @@ export function OBSController() {
                 <Input
                   id="client-join-code"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder={strings.settings.joinCodePlaceholder}
                   maxLength={12}
                   className={cn(
@@ -1550,6 +1550,14 @@ export function OBSController() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (connected && obsRef.current) {
+                      try {
+                        obsRef.current.disconnect()
+                        console.log(`[UI] Closed local OBS for remote mode`)
+                      } catch {}
+                      obsRef.current = null
+                      setConnected(false)
+                    }
                     setIsRemoteMode(true)
                     setConnectionMode("none")
                   }}

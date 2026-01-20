@@ -73,7 +73,7 @@ func (a *Agent) Start() error {
 	a.cfg.JoinCode = strings.ToUpper(code)
 
 	fmt.Printf("\n[Agent] Join Code: %s\n", a.cfg.JoinCode)
-	fmt.Printf("[Agent] Share this code on your iPad/mobile device to connect\n")
+	fmt.Printf("[Agent] Waiting for client connection...\n")
 	fmt.Printf("\n")
 
 	go a.connectOBSWithRetry()
@@ -86,16 +86,16 @@ func (a *Agent) Start() error {
 func (a *Agent) promptJoinCode() string {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Printf("Enter a Join Code (4-12 chars, e.g., MOMO), or press Enter to generate one: ")
+	fmt.Printf("Enter Join Code (4-12 chars) or press Enter to generate: ")
 	code, _ := reader.ReadString('\n')
 	code = strings.TrimSpace(code)
 
 	if code == "" {
 		code = generateJoinCode()
-		fmt.Printf("Generated code: %s\n", code)
+		fmt.Printf("Generated: %s\n", code)
 	}
 
-	return code
+	return strings.ToUpper(code)
 }
 
 func (a *Agent) connectOBSWithRetry() {
@@ -107,7 +107,7 @@ func (a *Agent) connectOBSWithRetry() {
 			return
 		case <-time.After(a.cfg.ReconnectDelay):
 			if err := a.connectOBS(); err != nil {
-				log.Printf("[OBS] Connection failed: %v", err)
+				log.Printf("[OBS] Retry: %v", err)
 				continue
 			}
 			return
@@ -116,23 +116,20 @@ func (a *Agent) connectOBSWithRetry() {
 }
 
 func (a *Agent) connectOBS() error {
-	fmt.Printf("[OBS] Attempting connection to %s\n", a.cfg.OBSURL)
-
 	a.mu.Lock()
 	if a.obsConn != nil {
 		a.mu.Unlock()
-		fmt.Printf("[OBS] Already connected\n")
 		return nil
 	}
 	a.mu.Unlock()
+
+	fmt.Printf("[OBS] Connecting to %s\n", a.cfg.OBSURL)
 
 	obs, resp, err := websocket.DefaultDialer.Dial(a.cfg.OBSURL, nil)
 	if err != nil {
 		if resp != nil {
 			body, _ := io.ReadAll(resp.Body)
-			fmt.Printf("[OBS] Error: %v\nResponse: %s\n", err, string(body))
-		} else {
-			fmt.Printf("[OBS] Error: %v\n", err)
+			fmt.Printf("[OBS] Failed: %v\n", string(body))
 		}
 		return err
 	}
@@ -141,7 +138,7 @@ func (a *Agent) connectOBS() error {
 	a.obsConn = obs
 	a.mu.Unlock()
 
-	fmt.Printf("[OBS] ✓ Connected successfully\n")
+	fmt.Printf("[OBS] ✓ Connected\n")
 
 	go a.handleOBSMessages()
 
@@ -156,11 +153,10 @@ func (a *Agent) connectWorkerWithRetry() {
 		case <-a.ctx.Done():
 			return
 		default:
-			fmt.Printf("[Worker] Waiting 2 seconds before retry...\n")
+			fmt.Printf("[Worker] Waiting 2s before retry...\n")
 			time.Sleep(2 * time.Second)
 
 			if err := a.connectWorker(); err != nil {
-				fmt.Printf("[Worker] Retry failed: %v\n", err)
 				continue
 			}
 			return
@@ -171,18 +167,16 @@ func (a *Agent) connectWorkerWithRetry() {
 func (a *Agent) connectWorker() error {
 	workerURL := a.cfg.WorkerURL
 
-	if !strings.HasPrefix(workerURL, "wss://") && !strings.HasPrefix(workerURL, "https://") {
+	if !strings.HasPrefix(workerURL, "wss://") {
 		workerURL = "wss://" + workerURL
 	}
 
-	fullURL := fmt.Sprintf("%s?code=%s&role=host", workerURL, strings.ToUpper(a.cfg.JoinCode))
-	fmt.Printf("[Worker] Intentando handshake con el Worker...\n")
-	fmt.Printf("[Worker] URL: %s\n", fullURL)
+	fullURL := fmt.Sprintf("%s?code=%s&role=host", workerURL, a.cfg.JoinCode)
+	fmt.Printf("[Worker] Connecting: %s\n", fullURL)
 
 	a.mu.Lock()
 	if a.workerConn != nil {
 		a.mu.Unlock()
-		fmt.Printf("[Worker] Already connected\n")
 		return nil
 	}
 	a.mu.Unlock()
@@ -191,38 +185,72 @@ func (a *Agent) connectWorker() error {
 	if err != nil {
 		if resp != nil {
 			body, _ := io.ReadAll(resp.Body)
-			fmt.Printf("[Worker] Handshake failed: %v\nResponse: %s\n", err, string(body))
-		} else {
-			fmt.Printf("[Worker] Handshake failed: %v\n", err)
+			fmt.Printf("[Worker] Failed: %v\n% s\n", err, string(body))
 		}
 		return err
 	}
-
-	fmt.Printf("[Worker] Handshake successful, sending register...\n")
 
 	a.mu.Lock()
 	a.workerConn = conn
 	a.mu.Unlock()
 
+	fmt.Printf("[Worker] ✓ Connected, sending register...\n")
+
 	registerMsg := map[string]interface{}{
 		"type": "register",
 		"role": "host",
-		"code": strings.ToUpper(a.cfg.JoinCode),
+		"code": a.cfg.JoinCode,
 	}
 
 	if err := conn.WriteJSON(registerMsg); err != nil {
-		fmt.Printf("[Worker] Failed to send register: %v\n", err)
+		fmt.Printf("[Worker] Register failed: %v\n", err)
 		a.mu.Lock()
 		a.workerConn = nil
 		a.mu.Unlock()
 		return err
 	}
 
-	fmt.Printf("[Worker] ✓ Registered successfully with code: %s\n", strings.ToUpper(a.cfg.JoinCode))
+	fmt.Printf("[Worker] ✓ Registered as Host [%s]\n", a.cfg.JoinCode)
 
+	go a.startHeartbeat()
 	go a.handleWorkerMessages()
 
 	return nil
+}
+
+func (a *Agent) startHeartbeat() {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-a.stopChan:
+			return
+		case <-a.ctx.Done():
+			return
+		case <-ticker.C:
+			a.mu.Lock()
+			conn := a.workerConn
+			a.mu.Unlock()
+
+			if conn != nil {
+				if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"ping"}`)); err != nil {
+					fmt.Printf("[Worker] Ping failed: %v\n", err)
+				}
+			}
+		}
+	}
+}
+
+func (a *Agent) closeLocalOBS() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.obsConn != nil {
+		fmt.Printf("[Agent] Closing local OBS connection (switching to remote)\n")
+		a.obsConn.Close()
+		a.obsConn = nil
+	}
 }
 
 func (a *Agent) Stop() {
@@ -233,18 +261,15 @@ func (a *Agent) Stop() {
 	defer a.mu.Unlock()
 
 	if a.obsConn != nil {
-		fmt.Printf("[Agent] Closing OBS connection...\n")
 		a.obsConn.Close()
 		a.obsConn = nil
 	}
-
 	if a.workerConn != nil {
-		fmt.Printf("[Agent] Closing Worker connection...\n")
 		a.workerConn.Close()
 		a.workerConn = nil
 	}
 
-	fmt.Printf("[Agent] Stopped gracefully\n")
+	fmt.Printf("[Agent] Stopped\n")
 }
 
 func (a *Agent) handleOBSMessages() {
@@ -266,7 +291,6 @@ func (a *Agent) handleOBSMessages() {
 
 			_, message, err := obs.ReadMessage()
 			if err != nil {
-				fmt.Printf("[OBS] Connection lost: %v\n", err)
 				a.mu.Lock()
 				a.obsConn = nil
 				a.mu.Unlock()
@@ -279,14 +303,11 @@ func (a *Agent) handleOBSMessages() {
 			a.mu.Unlock()
 
 			if worker != nil {
-				workerMsg := map[string]interface{}{
+				worker.WriteJSON(map[string]interface{}{
 					"type":      "obs_event",
-					"joinCode":  a.cfg.JoinCode,
+					"code":      a.cfg.JoinCode,
 					"eventData": string(message),
-				}
-				if err := worker.WriteJSON(workerMsg); err != nil {
-					fmt.Printf("[OBS] Failed to forward event: %v\n", err)
-				}
+				})
 			}
 		}
 	}
@@ -311,7 +332,6 @@ func (a *Agent) handleWorkerMessages() {
 
 			_, message, err := worker.ReadMessage()
 			if err != nil {
-				fmt.Printf("[Worker] Connection lost: %v\n", err)
 				a.mu.Lock()
 				a.workerConn = nil
 				a.mu.Unlock()
@@ -319,25 +339,21 @@ func (a *Agent) handleWorkerMessages() {
 				return
 			}
 
-			var workerMsg map[string]interface{}
-			if err := json.Unmarshal(message, &workerMsg); err != nil {
+			var msg map[string]interface{}
+			if err := json.Unmarshal(message, &msg); err != nil {
 				continue
 			}
 
-			msgType, _ := workerMsg["type"].(string)
-
-			switch msgType {
+			switch msg["type"] {
 			case "ping":
-				worker.WriteMessage(websocket.TextMessage, []byte("pong"))
+				worker.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
 			case "command":
-				method, _ := workerMsg["method"].(string)
+				method, _ := msg["method"].(string)
 				if method != "" {
 					a.SendCommand(method, nil)
 				}
 			case "peer_connected":
-				fmt.Printf("[Worker] ✓ Peer connected!\n")
-			case "waiting":
-				fmt.Printf("[Worker] Waiting for client...\n")
+				fmt.Printf("[Worker] ✓ Client connected!\n")
 			}
 		}
 	}
@@ -359,21 +375,14 @@ func (a *Agent) SendCommand(method string, params map[string]interface{}) error 
 	defer a.mu.Unlock()
 
 	if a.obsConn == nil {
-		return fmt.Errorf("not connected to OBS")
+		return fmt.Errorf("no OBS connection")
 	}
 
-	req := map[string]interface{}{
+	return a.obsConn.WriteJSON(map[string]interface{}{
 		"requestType": method,
 		"requestId":   fmt.Sprintf("%d", time.Now().UnixNano()),
 		"requestData": params,
-	}
-
-	if err := a.obsConn.WriteJSON(req); err != nil {
-		return err
-	}
-
-	fmt.Printf("[OBS] Command sent: %s\n", method)
-	return nil
+	})
 }
 
 func generateJoinCode() string {
@@ -389,7 +398,7 @@ func generateJoinCode() string {
 
 func main() {
 	obsURL := flag.String("obs", "", "OBS WebSocket URL")
-	obsPassword := flag.String("password", "", "OBS WebSocket password")
+	obsPassword := flag.String("password", "", "OBS password")
 	workerURL := flag.String("worker", "", "Worker URL")
 	joinCode := flag.String("code", "", "Join code")
 	noAutoReconnect := flag.Bool("no-auto-reconnect", false, "Disable auto-reconnect")
@@ -407,10 +416,9 @@ func main() {
 
 	agent := NewAgent(cfg)
 	if err := agent.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start agent: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("[Agent] Running. Press Ctrl+C to stop.\n")
 	<-agent.ctx.Done()
 }
