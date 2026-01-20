@@ -153,10 +153,11 @@ func (a *Agent) connectWorkerWithRetry() {
 		case <-a.ctx.Done():
 			return
 		default:
-			fmt.Printf("[Worker] Waiting 2s before retry...\n")
-			time.Sleep(2 * time.Second)
+			fmt.Printf("[Worker] Worker error, waiting 5s before retry...\n")
+			time.Sleep(5 * time.Second)
 
 			if err := a.connectWorker(); err != nil {
+				fmt.Printf("[Worker] Retry failed: %v\n", err)
 				continue
 			}
 			return
@@ -219,6 +220,7 @@ func (a *Agent) connectWorker() error {
 }
 
 func (a *Agent) startHeartbeat() {
+	fmt.Printf("[Worker] Starting heartbeat (15s interval)\n")
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -236,6 +238,8 @@ func (a *Agent) startHeartbeat() {
 			if conn != nil {
 				if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"ping"}`)); err != nil {
 					fmt.Printf("[Worker] Ping failed: %v\n", err)
+				} else {
+					fmt.Printf("[Worker] Ping sent\n")
 				}
 			}
 		}

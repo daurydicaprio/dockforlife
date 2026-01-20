@@ -63,6 +63,8 @@ export interface LocaleStrings {
       langChanged: string
       agentNotRunning: string
       searchingAgent: string
+      remoteEnabled: string
+      localEnabled: string
     }
     agent: {
       title: string
@@ -170,6 +172,8 @@ export const locales: Record<Language, LocaleStrings> = {
       langChanged: 'Language changed',
       agentNotRunning: 'Agent not running on this network',
       searchingAgent: 'Searching for local agent...',
+      remoteEnabled: 'Remote mode enabled',
+      localEnabled: 'Local mode enabled',
     },
     agent: {
       title: 'Local Agent Required',
@@ -275,6 +279,8 @@ export const locales: Record<Language, LocaleStrings> = {
       langChanged: 'Idioma cambiado',
       agentNotRunning: 'Agente no disponible en esta red',
       searchingAgent: 'Buscando agente local...',
+      remoteEnabled: 'Modo remoto activado',
+      localEnabled: 'Modo local activado',
     },
     agent: {
       title: 'Se Requiere Agente Local',
