@@ -135,6 +135,7 @@ function Logo({ className }: { className?: string }) {
 
 export function OBSController() {
   const obsRef = useRef<OBSWebSocket | null>(null)
+  const workerRef = useRef<WebSocket | null>(null)
   const [deck, setDeck] = useState<DeckButton[]>([])
   const [connected, setConnected] = useState(false)
   const [lang, setLang] = useState<Language>("en")
@@ -327,12 +328,13 @@ export function OBSController() {
       ws.onclose = () => {
         console.log(`[Worker] Disconnected`)
         setIsRemoteConnected(false)
+        workerRef.current = null
         if (!connected) {
           setConnected(false)
         }
       }
 
-      obsRef.current = ws as unknown as OBSWebSocket
+      workerRef.current = ws
 
     } catch (error) {
       console.error(`[Worker] Connection failed:`, error)
@@ -443,10 +445,10 @@ export function OBSController() {
 
   useEffect(() => {
     const savedUrl = localStorage.getItem("dfl_ws_url")
-    if (savedUrl) {
+    if (savedUrl && !isRemoteMode) {
       connectOBS()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isRemoteMode])
 
   // Sync states periodically
   useEffect(() => {
@@ -1365,6 +1367,14 @@ export function OBSController() {
                 className="w-full py-6 text-lg"
                 disabled={joinCode.length < 4 || isConnecting}
                 onClick={() => {
+                  if (connected && obsRef.current) {
+                    console.log(`[UI] Disconnecting local OBS before Remote connection...`)
+                    try {
+                      obsRef.current.disconnect()
+                    } catch {}
+                    obsRef.current = null
+                    setConnected(false)
+                  }
                   setIsRemoteMode(true)
                   connectToWorker()
                 }}
@@ -1405,19 +1415,21 @@ export function OBSController() {
                 </p>
               </div>
 
-              <div className={cn("space-y-2", !isRemoteMode && "opacity-50")}>
+              <div className="space-y-2">
                 <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
                 <Input
                   id="join-code"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder={strings.settings.joinCodePlaceholder}
                   maxLength={12}
-                  disabled={!isRemoteMode}
-                  className={cn(isDark ? "bg-zinc-800 border-zinc-700" : "", !isRemoteMode && "opacity-50 cursor-not-allowed")}
+                  className={cn(
+                    "font-mono tracking-widest uppercase",
+                    isDark ? "bg-zinc-800 border-zinc-700" : ""
+                  )}
                 />
                 <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-zinc-400")}>
-                  {isRemoteMode ? strings.settings.shareCode : strings.settings.joinCodeHint}
+                  {strings.settings.joinCodeHint}
                 </p>
               </div>
               <div className={cn("space-y-2", isRemoteMode && "opacity-50")}>
@@ -1472,23 +1484,30 @@ export function OBSController() {
                   onClick={async () => {
                     const newValue = !isRemoteMode
                     
-                    if (newValue && !isValidJoinCode(joinCode)) {
-                      showToast(strings.toasts.codeExpired, "error")
-                      return
-                    }
-                    
-                    if (connected && obsRef.current) {
-                      console.log(`[UI] Disconnecting current socket before mode switch...`)
-                      try {
-                        await obsRef.current.disconnect()
-                      } catch (err) {
-                        console.log(`[UI] Disconnect error (ignored): ${err}`)
+                    if (newValue) {
+                      if (connected && obsRef.current) {
+                        console.log(`[UI] Disconnecting local OBS before switching to Remote...`)
+                        try {
+                          await obsRef.current.disconnect()
+                        } catch (err) {
+                          console.log(`[UI] Local OBS disconnect error: ${err}`)
+                        }
+                        obsRef.current = null
                       }
-                      obsRef.current = null
-                      setConnected(false)
-                      setIsRemoteConnected(false)
+                    } else {
+                      if (connected && workerRef.current) {
+                        console.log(`[UI] Disconnecting worker before switching to Local...`)
+                        try {
+                          workerRef.current.close()
+                        } catch (err) {
+                          console.log(`[UI] Worker disconnect error: ${err}`)
+                        }
+                        workerRef.current = null
+                      }
                     }
                     
+                    setConnected(false)
+                    setIsRemoteConnected(false)
                     setIsRemoteMode(newValue)
                     setConnectionMode("none")
                     localStorage.setItem("dfl_remote_mode", String(newValue))
