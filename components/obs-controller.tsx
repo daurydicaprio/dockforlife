@@ -303,17 +303,29 @@ export function OBSController() {
       const ws = new WebSocket(url.toString())
 
       ws.onopen = () => {
-        console.log(`[Worker] Connected, waiting for host...`)
+        console.log(`[Worker] Socket open, sending register...`)
+        ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
+        console.log(`[Worker] Register sent: code=${code}, role=client`)
       }
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data)
-        console.log(`[Worker] Received: ${data.type}`)
+        console.log(`[Worker] Received: ${JSON.stringify(data)}`)
 
         if (data.type === "waiting") {
+          console.log(`[Worker] Waiting for host...`)
           setRemoteWaitingForAgent(true)
           setIsConnecting(false)
-        } else if (data.type === "connected" || data.type === "peer_connected") {
+        } else if (data.type === "peer_connected") {
+          console.log(`[Worker] SUCCESS: paired for ${data.code}`)
+          setRemoteWaitingForAgent(false)
+          setIsRemoteConnected(true)
+          setConnected(true)
+          setConnectionMode("remote")
+          setIsConnecting(false)
+          showToast(strings.toasts.connected, "success")
+        } else if (data.type === "connected") {
+          console.log(`[Worker] SUCCESS: connected`)
           setRemoteWaitingForAgent(false)
           setIsRemoteConnected(true)
           setConnected(true)
