@@ -32,10 +32,19 @@ npm-debug.log*
 
 # Cloudflare & Environment
 .env*
-.dev.vars
+.env.local
+.env.production
+.dev.variables
 .vercel
 wrangler.toml
 .wrangler/
+!wrangler.toml
+!worker/wrangler.toml
+
+# Agent Configuration
+proxy/config.json
+proxy/config.local.json
+dockforlife-agent
 
 # Planning
 PLAN.md

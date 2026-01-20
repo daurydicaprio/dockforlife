@@ -1,0 +1,13 @@
+{
+  "obs": {
+    "url": "ws://127.0.0.1:4455",
+    "password": ""
+  },
+  "worker": {
+    "url": "wss://dockforlife-relay.blu-b1d.workers.dev/ws"
+  },
+  "agent": {
+    "autoReconnect": true,
+    "reconnectDelay": 5000
+  }
+}
