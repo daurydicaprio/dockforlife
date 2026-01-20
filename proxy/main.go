@@ -377,6 +377,9 @@ func (a *Agent) handleWorkerMessages() {
 			case "peer_connected":
 				fmt.Printf("[Worker] Client connected!\n")
 				a.sendOBSData()
+			case "request_update":
+				fmt.Printf("[Worker] request_update received, sending obs_data...\n")
+				a.sendOBSData()
 			case "error":
 				errMsg, _ := msg["message"].(string)
 				fmt.Printf("[Worker] Error: %s\n", errMsg)
@@ -404,28 +407,32 @@ func (a *Agent) sendOBSData() {
 		fmt.Printf("[OBS] Failed to get scenes: %v\n", err)
 		return
 	}
+	fmt.Printf("[OBS] Got %d scenes\n", len(scenes))
 
 	inputs, err := a.getInputList()
 	if err != nil {
 		fmt.Printf("[OBS] Failed to get inputs: %v\n", err)
 		return
 	}
+	fmt.Printf("[OBS] Got %d inputs\n", len(inputs))
 
 	obsData := map[string]interface{}{
 		"type":   "obs_data",
 		"scenes": scenes,
 		"inputs": inputs,
-		"code":   a.cfg.JoinCode,
+		"status": "ok",
 	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if a.workerConn != nil {
+		jsonData, _ := json.Marshal(obsData)
+		fmt.Printf("[Worker] Sending obs_data to relay: %s\n", string(jsonData))
 		if err := a.workerConn.WriteJSON(obsData); err != nil {
 			fmt.Printf("[Worker] Failed to send OBS data: %v\n", err)
 		} else {
-			fmt.Printf("[Worker] OBS data sent: %d scenes, %d inputs\n", len(scenes), len(inputs))
+			fmt.Printf("[Worker] OBS data sent successfully\n")
 		}
 	}
 }
