@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -24,12 +25,14 @@ type Config struct {
 	ListenAddr     string
 	AutoReconnect  bool
 	ReconnectDelay time.Duration
+	Debug          bool
 }
 
 type Agent struct {
 	cfg        Config
 	obsConn    *websocket.Conn
 	workerConn *websocket.Conn
+	httpServer *http.Server
 	ctx        context.Context
 	cancel     context.CancelFunc
 	mu         sync.Mutex
@@ -47,6 +50,9 @@ func NewAgent(cfg Config) *Agent {
 	if cfg.ReconnectDelay == 0 {
 		cfg.ReconnectDelay = 5 * time.Second
 	}
+	if cfg.WorkerURL == "" {
+		cfg.WorkerURL = "wss://remote.daurydicaprio.com/ws"
+	}
 	cfg.AutoReconnect = true
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,14 +66,87 @@ func NewAgent(cfg Config) *Agent {
 }
 
 func (a *Agent) Start() error {
-	log.Printf("[Agent] Starting DockForLife Proxy Agent v1.0")
+	log.Printf("[Agent] Starting DockForLife Proxy Agent v1.0.1")
 	log.Printf("[Agent] OBS URL: %s", a.cfg.OBSURL)
+	log.Printf("[Agent] Worker URL: %s", a.cfg.WorkerURL)
 	log.Printf("[Agent] Auto-reconnect: %v", a.cfg.AutoReconnect)
 
+	go a.startHTTPServer()
 	go a.connectOBSWithRetry()
 	go a.handleShutdown()
 
 	return nil
+}
+
+func (a *Agent) startHTTPServer() {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		connected := a.connected
+		joinCode := a.cfg.JoinCode
+		a.mu.Unlock()
+
+		status := map[string]interface{}{
+			"connected": connected,
+			"joinCode":  joinCode,
+			"workerURL": a.cfg.WorkerURL,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+	})
+
+	mux.HandleFunc("/set-code", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Code == "" || len(req.Code) < 4 {
+			http.Error(w, "Invalid join code", http.StatusBadRequest)
+			return
+		}
+
+		a.mu.Lock()
+		previousCode := a.cfg.JoinCode
+		a.cfg.JoinCode = strings.ToUpper(req.Code)
+		a.mu.Unlock()
+
+		log.Printf("[Agent] Join code updated: %s -> %s", previousCode, a.cfg.JoinCode)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"message": "Join code set successfully",
+		})
+
+		if previousCode == "" {
+			go a.connectWorkerWithRetry()
+		}
+	})
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	a.httpServer = &http.Server{
+		Addr:    a.cfg.ListenAddr,
+		Handler: mux,
+	}
+
+	log.Printf("[Agent] HTTP server listening on %s", a.cfg.ListenAddr)
+	if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("[Agent] HTTP server error: %v", err)
+	}
 }
 
 func (a *Agent) connectOBSWithRetry() {
@@ -163,7 +242,7 @@ func (a *Agent) connectWorker() error {
 		workerURL = "wss://" + workerURL
 	}
 
-	fullURL := fmt.Sprintf("%s/ws?code=%s&type=host", workerURL, a.cfg.JoinCode)
+	fullURL := fmt.Sprintf("%s?code=%s&type=host", workerURL, a.cfg.JoinCode)
 	log.Printf("[Agent] Connecting to worker: %s", fullURL)
 
 	conn, _, err := websocket.DefaultDialer.Dial(fullURL, nil)
@@ -378,6 +457,8 @@ func main() {
 
 	flag.Parse()
 
+	defaultWorkerURL := "wss://remote.daurydicaprio.com/ws"
+
 	cfg := Config{
 		OBSURL:         *obsURL,
 		OBSPassword:    *obsPassword,
@@ -388,12 +469,18 @@ func main() {
 		ReconnectDelay: 5 * time.Second,
 	}
 
-	fmt.Printf("DockForLife Proxy Agent v1.0.0\n")
+	fmt.Printf("DockForLife Proxy Agent v1.0.1\n")
 	fmt.Printf("================================\n")
 	fmt.Printf("OBS URL: %s\n", cfg.OBSURL)
-	fmt.Printf("Worker: %s\n", cfg.WorkerURL)
+	fmt.Printf("Worker: %s (default: %s)\n", cfg.WorkerURL, defaultWorkerURL)
 	fmt.Printf("Join Code: %s\n", cfg.JoinCode)
+	fmt.Printf("HTTP Server: %s\n", cfg.ListenAddr)
 	fmt.Printf("Auto-reconnect: %v\n", cfg.AutoReconnect)
+	fmt.Printf("\n")
+	fmt.Printf("Endpoints:\n")
+	fmt.Printf("  GET  %s/status   - Get connection status\n", cfg.ListenAddr)
+	fmt.Printf("  POST %s/set-code - Set join code (JSON: {\"code\": \"ABC123\"})\n", cfg.ListenAddr)
+	fmt.Printf("  GET  %s/health   - Health check\n", cfg.ListenAddr)
 	fmt.Printf("\n")
 
 	agent := NewAgent(cfg)
