@@ -46,7 +46,7 @@ export interface AppConfig {
 
 // Default configuration values
 const defaultConfig: AppConfig = {
-  workerUrl: 'wss://remote.daurydicaprio.com/ws',
+  workerUrl: 'wss://dockforlife-relay.blu-b1d.workers.dev/ws',
   defaultObsUrl: 'ws://127.0.0.1:4455',
   appName: 'DockForLife',
   appVersion: 'v1.0.0-beta',

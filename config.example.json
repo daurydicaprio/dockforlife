@@ -1,0 +1,5 @@
+{
+  "WORKER_URL": "wss://dockforlife-relay.blu-b1d.workers.dev/ws",
+  "OBS_PORT": 4455,
+  "OBS_PASSWORD": "your_secure_password"
+}
