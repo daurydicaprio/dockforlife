@@ -26,11 +26,11 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: agent/package-lock.json
+          cache-dependency-path: './agent/package-lock.json'
 
       - name: Install dependencies
         working-directory: agent
-        run: npm ci
+        run: npm install
 
       - name: Build TypeScript
         working-directory: agent
