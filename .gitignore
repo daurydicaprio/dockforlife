@@ -12,7 +12,6 @@ dist/
 
 # Binarios y ejecutables
 bin/
-agent
 *.exe
 *.bin
 /proxy/bin/
