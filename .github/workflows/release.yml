@@ -35,13 +35,19 @@ jobs:
       - name: Install pkg
         run: cd agent && npm install -g pkg
 
-      - name: Package executables
-        run: cd agent && npx pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path ./dist
+      - name: Package Windows executable
+        run: cd agent && npx pkg . --targets node18-win-x64 --output ../agent/dist/dockforlife-win.exe
+
+      - name: Package Linux executable
+        run: cd agent && npx pkg . --targets node18-linux-x64 --output ../agent/dist/dockforlife-linux
+
+      - name: Package macOS executable
+        run: cd agent && npx pkg . --targets node18-macos-x64 --output ../agent/dist/dockforlife-macos
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dockforlife-agent
+          name: DockForLife-Binaries
           path: agent/dist/
           retention-days: 7
 
@@ -66,16 +72,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-beta
-          release_name: DockForLife Agent v1.0.0-beta
           body: |
             ## DockForLife Agent v1.0.0-beta
 
             Local OBS control agent with Zero Configuration.
 
             ### Downloads
-            - **Windows:** `dockforlife-agent-win.exe`
-            - **Linux:** `dockforlife-agent-linux`
-            - **macOS:** `dockforlife-agent-mac`
+            - **Windows:** `dockforlife-win.exe`
+            - **Linux:** `dockforlife-linux`
+            - **macOS:** `dockforlife-macos`
 
             ### Features
             - Magic Handshake: Automatic Join Code generation
@@ -84,7 +89,7 @@ jobs:
 
             ### Usage
             1. Download the binary for your platform
-            2. Run: `./dockforlife-agent-linux` (Linux) or double-click (Windows)
+            2. Run: `./dockforlife-linux` (Linux) or double-click (Windows)
             3. Open https://dockforlife.app in your browser
             4. Generate a Join Code and connect from any device
 
@@ -116,16 +121,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: DockForLife Agent ${{ github.ref_name }}
           body: |
             ## DockForLife Agent ${{ github.ref_name }}
 
             Local OBS control agent.
 
             ### Downloads
-            - **Windows:** `dockforlife-agent-win.exe`
-            - **Linux:** `dockforlife-agent-linux`
-            - **macOS:** `dockforlife-agent-mac`
+            - **Windows:** `dockforlife-win.exe`
+            - **Linux:** `dockforlife-linux`
+            - **macOS:** `dockforlife-macos`
 
             Full release notes: https://github.com/daurydicaprio/dockforlife/releases
           draft: false
