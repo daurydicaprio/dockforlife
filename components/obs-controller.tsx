@@ -151,6 +151,8 @@ export function OBSController() {
   const [wsUrl, setWsUrl] = useState("ws://127.0.0.1:4455")
   const [wsPassword, setWsPassword] = useState("")
   const [joinCode, setJoinCode] = useState("")
+  const [storedPairingCode, setStoredPairingCode] = useState("")
+  const [isClient, setIsClient] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [muteStates, setMuteStates] = useState<Record<string, boolean>>({})
@@ -172,13 +174,41 @@ export function OBSController() {
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
-  
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isClient) return
+    const saved = localStorage.getItem("dfl_pairing_code")
+    if (saved) {
+      setStoredPairingCode(saved)
+      setJoinCode(saved)
+    }
+  }, [isClient])
+
+useEffect(() => {
+    if (!isClient || !joinCode) return
+    localStorage.setItem("dfl_pairing_code", joinCode)
+    setStoredPairingCode(joinCode)
+  }, [joinCode, isClient])
+
+
+
 
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 2000)
   }, [])
+
+  const resetPairingCode = useCallback(() => {
+    localStorage.removeItem("dfl_pairing_code")
+    setStoredPairingCode("")
+    setJoinCode("")
+    showToast(strings.toasts.disconnected, "success")
+  }, [showToast, strings])
 
   const startRemoteTimeout = useCallback(() => {
     if (remoteTimeoutRef.current) clearTimeout(remoteTimeoutRef.current)
@@ -1027,6 +1057,15 @@ export function OBSController() {
 
           {isClientMode ? (
             <div className="space-y-6 py-4">
+              {isClient && storedPairingCode && (
+                <div className={cn("p-4 rounded-xl text-center border", isDark ? "bg-blue-500/10 border-blue-500/20" : "bg-blue-50 border-blue-200")}>
+                  <p className={cn("text-xs mb-1", isDark ? "text-blue-400" : "text-blue-600")}>Linked Agent Code</p>
+                  <p className="text-xl font-mono font-bold tracking-widest">{storedPairingCode}</p>
+                  <Button variant="ghost" size="sm" onClick={resetPairingCode} className={cn("mt-2 text-xs", isDark ? "text-zinc-400 hover:text-white" : "text-gray-500 hover:text-gray-900")}>
+                    Disconnect & Reset
+                  </Button>
+                </div>
+              )}
               <div className="space-y-4">
                 <Label htmlFor="client-join-code" className="text-center block text-lg font-medium">{strings.settings.joinCode}</Label>
                 <Input id="client-join-code" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder={strings.settings.joinCodePlaceholder} maxLength={12} className={cn("text-center text-xl font-mono tracking-widest py-6 rounded-xl", isDark ? "bg-zinc-900 border-white/10" : "bg-gray-50 border-gray-200")} />

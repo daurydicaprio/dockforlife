@@ -58,6 +58,7 @@ export interface LocaleStrings {
   }
     toasts: {
       connected: string
+      disconnected: string
       connectionError: string
       saved: string
       deleted: string
@@ -204,6 +205,7 @@ export const locales: Record<Language, LocaleStrings> = {
     },
     toasts: {
       connected: 'Connected to OBS',
+      disconnected: 'Disconnected',
       connectionError: 'Failed to connect',
       saved: 'Button saved',
       deleted: 'Button deleted',
@@ -348,6 +350,7 @@ export const locales: Record<Language, LocaleStrings> = {
     },
     toasts: {
       connected: 'Conectado a OBS',
+      disconnected: 'Desconectado',
       connectionError: 'Error al conectar',
       saved: 'Botón guardado',
       deleted: 'Botón eliminado',
