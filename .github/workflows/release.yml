@@ -1,15 +1,11 @@
-name: Build Agent
+name: Release Agent
 
 on:
   push:
     branches:
       - dev
       - hola
-    paths:
-      - 'agent/**'
   pull_request:
-    paths:
-      - 'agent/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,22 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: dockforlife-agent-linux
-            node-os: linux
-            pkg-target: node18-linux-x64
-          - os: macos-latest
-            artifact: dockforlife-agent-mac
-            node-os: darwin
-            pkg-target: node18-macos-x64
-          - os: windows-latest
-            artifact: dockforlife-agent-win.exe
-            node-os: win32
-            pkg-target: node18-win-x64
 
     steps:
       - name: Checkout code
@@ -60,16 +40,16 @@ jobs:
         working-directory: agent
         run: npm install -g pkg
 
-      - name: Package executable
+      - name: Package executables
         working-directory: agent
-        run: pkg . --targets ${{ matrix.pkg-target }} --output ../${{ matrix.artifact }}
+        run: |
+          npx pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path ./dist
 
-      - name: Upload artifact
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: dockforlife-agent
+          path: agent/dist/
           retention-days: 7
 
   prerelease:

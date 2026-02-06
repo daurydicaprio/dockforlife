@@ -4,9 +4,8 @@ Professional OBS remote control with Zero Configuration.
 
 ## Requirements
 
-- Node.js 18+ and pnpm
 - OBS Studio with obs-websocket plugin (v5.x)
-- Go 1.21+ (for proxy server)
+- Node.js 18+ and pnpm (for development)
 - Docker and Docker Compose (optional)
 
 ## Installation
@@ -63,20 +62,41 @@ Access the application at `http://localhost:3000`
 4. Set a password if desired
 5. Note the port (default: 4455)
 
-## Building the Proxy Server
+## Standalone Agent (Recommended for Users)
 
-The proxy server enables remote connections via Cloudflare Workers:
+Download the pre-built executable for your platform from GitHub Releases:
+
+- **Windows:** `dockforlife-agent-win.exe`
+- **Linux:** `dockforlife-agent-linux`
+- **macOS:** `dockforlife-agent-mac`
+
+Windows users: Simply download and run the `.exe` file. No Node.js installation required.
+
+### Running the Agent
 
 ```bash
-cd proxy
-go build -o dockforlife-proxy .
+# Linux/macOS
+chmod +x dockforlife-agent-linux
+./dockforlife-agent-linux
+
+# Windows
+./dockforlife-agent-win.exe
 ```
 
-Run the proxy:
+The agent will start and connect to your local OBS automatically.
+
+## Building the Agent from Source
+
+To build the agent executable from source:
 
 ```bash
-./dockforlife-proxy
+cd agent
+npm ci
+npm run build
+npx pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path ./dist
 ```
+
+Binaries will be in `agent/dist/`.
 
 ## Deployment
 
