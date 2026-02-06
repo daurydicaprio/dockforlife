@@ -173,34 +173,43 @@ export function OBSController() {
   const [obsDataError, setObsDataError] = useState<string | null>(null)
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
-  const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
+const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
 
   useEffect(() => {
     setIsClient(true)
   }, [])
 
   useEffect(() => {
-    if (!isClient) return
-    const saved = localStorage.getItem("dfl_pairing_code")
-    if (saved) {
-      setStoredPairingCode(saved)
-      setJoinCode(saved)
+    if (typeof window === "undefined") return
+    
+    const savedCode = window.localStorage.getItem("dfl_pairing_code")
+    if (savedCode) {
+      setStoredPairingCode(savedCode)
+      setJoinCode(savedCode)
     }
   }, [isClient])
 
-useEffect(() => {
+  useEffect(() => {
     if (!isClient || !joinCode) return
-    localStorage.setItem("dfl_pairing_code", joinCode)
+    
+    window.localStorage.setItem("dfl_pairing_code", joinCode)
     setStoredPairingCode(joinCode)
   }, [joinCode, isClient])
 
   useEffect(() => {
-    if (!isClient) return
+    if (typeof window === "undefined") return
+    
     const ua = navigator.userAgent.toLowerCase()
     if (ua.includes("windows")) setUserOS("windows")
     else if (ua.includes("mac") || ua.includes("darwin")) setUserOS("macos")
     else if (ua.includes("linux") || ua.includes("ubuntu") || ua.includes("fedora") || ua.includes("debian")) setUserOS("linux")
   }, [isClient])
+
+  useEffect(() => {
+    if (isClient && storedPairingCode) {
+      setJoinCode(storedPairingCode)
+    }
+  }, [isClient, storedPairingCode])
 
   const RELEASE_VERSION = "v0.1.0-alpha"
 
