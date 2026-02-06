@@ -171,84 +171,8 @@ export function OBSController() {
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
-  const obsDataRef = useRef(obsData)
+  
 
-  useEffect(() => { obsDataRef.current = obsData }, [obsData])
-  useEffect(() => { isRemoteModeRef.current = isRemoteMode }, [isRemoteMode])
-  useEffect(() => { connectionModeRef.current = connectionMode }, [connectionMode])
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("dfl_theme")
-    if (savedTheme) setIsDark(savedTheme === "dark")
-
-    const saved = localStorage.getItem("dfl_deck_v2")
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      const migrated = parsed.map((btn: DeckButton) => ({
-        ...btn,
-        colorActive: btn.colorActive || COLOR_PRESETS.find(c => c.value === btn.color)?.active || "#3b82f6"
-      }))
-      setDeck(migrated)
-    } else {
-      setDeck(DEFAULT_DECK)
-    }
-
-    const savedUrl = localStorage.getItem("dfl_ws_url")
-    const savedPass = localStorage.getItem("dfl_ws_pass")
-    const savedJoinCode = localStorage.getItem("dfl_join_code")
-    const savedRemoteMode = localStorage.getItem("dfl_remote_mode")
-    if (savedUrl) setWsUrl(savedUrl)
-    if (savedPass) setWsPassword(savedPass)
-    if (savedJoinCode) setJoinCode(savedJoinCode)
-    if (savedRemoteMode === "true") setIsRemoteMode(true)
-
-    const savedLang = localStorage.getItem("dfl_lang") as Language | null
-    if (savedLang && (savedLang === "en" || savedLang === "es")) {
-      setLang(savedLang)
-      setStrings(getLocaleStrings(savedLang))
-    } else {
-      const browserLang = navigator.language || "en"
-      const detectedLang: Language = browserLang.startsWith("es") ? "es" : "en"
-      setLang(detectedLang)
-      setStrings(getLocaleStrings(detectedLang))
-      localStorage.setItem("dfl_lang", detectedLang)
-    }
-
-    const platform = navigator.platform.toLowerCase()
-    const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent)
-    setIsMobile(isMobileDevice)
-    setIsClientMode(isMobileDevice)
-
-    if (platform.includes("win")) setUserOS("windows")
-    else if (platform.includes("mac") || platform.includes("darwin")) setUserOS("macos")
-    else if (platform.includes("linux") || platform.includes("unix")) setUserOS("linux")
-    else setUserOS("other")
-
-    const hasVisited = localStorage.getItem("dfl_visited")
-    if (!hasVisited) {
-      setOnboardingOpen(true)
-      localStorage.setItem("dfl_visited", "true")
-    }
-  }, [])
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDark)
-    localStorage.setItem("dfl_theme", isDark ? "dark" : "light")
-  }, [isDark])
-
-  useEffect(() => {
-    if (deck.length > 0) localStorage.setItem("dfl_deck_v2", JSON.stringify(deck))
-  }, [deck])
-
-  const updateOBSData = useCallback((data: { scenes?: string[]; inputs?: string[] }) => {
-    setObsData((prev) => ({
-      ...prev,
-      scenes: (data.scenes || prev.scenes.map(s => s.sceneName)).map(name => ({ sceneName: name })),
-      inputs: (data.inputs || prev.inputs.map(i => i.inputName)).map(name => ({ inputName: name })),
-      allSources: [...(data.scenes || prev.scenes.map(s => s.sceneName)), ...(data.inputs || prev.inputs.map(i => i.inputName))].sort(),
-    }))
-    setHasOBSData(true)
-  }, [])
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
@@ -318,7 +242,7 @@ export function OBSController() {
               const scenes = Array.isArray(data.scenes) ? data.scenes : [];
               const inputs = Array.isArray(data.inputs) ? data.inputs : [];
               
-              updateOBSData({ scenes, inputs })
+              setObsData((prev) => ({ ...prev, scenes, inputs }))
               
               setDeck((prev) => prev.map((btn) => {
                 if (btn.type === "Mute") {
@@ -372,7 +296,7 @@ export function OBSController() {
       setIsConnecting(false)
       showToast(strings.toasts.connectionError, "error")
     }
-  }, [joinCode, showToast, strings, isRemoteConnected, connected, startRemoteTimeout, updateOBSData, disconnectWorker])
+  }, [joinCode, showToast, strings, isRemoteConnected, connected, startRemoteTimeout, disconnectWorker])
 
   const connectOBS = useCallback(async () => {
     if (obsRef.current) {
