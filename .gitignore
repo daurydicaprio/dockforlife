@@ -4,10 +4,10 @@
 .pnpm-debug.log*
 
 # Next.js & Production
-/.next/
-/out/
-/build
-/dist/
+.next/
+out/
+build/
+dist/
 **/dist/
 
 # Binarios y ejecutables
@@ -45,6 +45,7 @@ wrangler.toml
 proxy/config.json
 proxy/config.local.json
 dockforlife-agent
+dockforlife.config.json
 
 # Planning
 PLAN.md

@@ -2,14 +2,10 @@ name: Build Proxy
 
 on:
   push:
-    paths:
-      - 'proxy/**'
     branches:
       - dev
       - hola
   pull_request:
-    paths:
-      - 'proxy/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -59,10 +55,8 @@ jobs:
         with:
           go-version: '1.21'
           cache: true
-          cache-dependency-path: proxy/go.sum
 
       - name: Build proxy
-        working-directory: ./proxy
         run: |
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -o ${{ matrix.artifact }} .
@@ -72,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: proxy/${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
           retention-days: 7
 
   prerelease:
