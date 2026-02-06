@@ -3,7 +3,6 @@ name: Release Agent
 on:
   push:
     branches:
-      - dev
       - hola
   pull_request:
 
@@ -44,38 +43,15 @@ jobs:
       - name: Package macOS executable
         run: cd agent && npx pkg . --targets node18-macos-x64 --output ../agent/dist/dockforlife-macos
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: DockForLife-Binaries
-          path: agent/dist/
-          retention-days: 7
-
-  prerelease:
-    needs: build
-    if: github.ref == 'refs/heads/hola' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release
-          merge-multiple: true
-
-      - name: Create Pre-release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0-beta
+          tag_name: v0.1.0-alpha
+          name: DockForLife v0.1.0-alpha
           body: |
-            ## DockForLife Agent v1.0.0-beta
+            ## DockForLife v0.1.0-alpha
 
-            Local OBS control agent with Zero Configuration.
+            Initial alpha release of DockForLife OBS Control Agent.
 
             ### Downloads
             - **Windows:** `dockforlife-win.exe`
@@ -97,42 +73,9 @@ jobs:
             Source code available at: https://github.com/daurydicaprio/dockforlife
           draft: false
           prerelease: true
-          files: release/**
-          generate_release_notes: false
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release
-          merge-multiple: true
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          body: |
-            ## DockForLife Agent ${{ github.ref_name }}
-
-            Local OBS control agent.
-
-            ### Downloads
-            - **Windows:** `dockforlife-win.exe`
-            - **Linux:** `dockforlife-linux`
-            - **macOS:** `dockforlife-macos`
-
-            Full release notes: https://github.com/daurydicaprio/dockforlife/releases
-          draft: false
-          prerelease: false
-          files: release/**
-          generate_release_notes: false
+          files: |
+            agent/dist/dockforlife-win.exe
+            agent/dist/dockforlife-linux
+            agent/dist/dockforlife-macos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
