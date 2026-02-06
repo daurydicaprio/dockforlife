@@ -21,36 +21,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Debug directory structure
-        run: ls -R ${{ github.workspace }}
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
       - name: Install dependencies
-        working-directory: ${{ github.workspace }}/agent
-        run: npm install
+        run: cd agent && npm install
 
       - name: Build TypeScript
-        working-directory: ${{ github.workspace }}/agent
-        run: npm run build
+        run: cd agent && npm run build
 
       - name: Install pkg
-        working-directory: ${{ github.workspace }}/agent
-        run: npm install -g pkg
+        run: cd agent && npm install -g pkg
 
       - name: Package executables
-        working-directory: ${{ github.workspace }}/agent
-        run: |
-          npx pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path ./dist
+        run: cd agent && npx pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path ./dist
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dockforlife-agent
-          path: ${{ github.workspace }}/agent/dist/
+          path: agent/dist/
           retention-days: 7
 
   prerelease:
