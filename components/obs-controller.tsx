@@ -33,7 +33,7 @@ import { OBSWebSocketAdapter } from "@/lib/obs-adapter"
 import { getLocaleStrings, LocaleStrings, Language } from "@/lib/locales"
 import { createConnectionManager, ConnectionManager, ConnectionState, ConnectionMode } from "@/lib/connection-manager"
 import { Download, Monitor } from "lucide-react"
-import { getWorkerUrl, generateJoinCode, getGitHubReleaseUrl, isValidJoinCode } from "@/lib/config"
+import { getWorkerUrl, generateJoinCode, getGitHubReleaseUrl, isValidJoinCode, config } from "@/lib/config"
 import {
   Mic,
   Eye,
@@ -290,7 +290,7 @@ export function OBSController() {
     if (remoteTimeoutRef.current) clearTimeout(remoteTimeoutRef.current)
     remoteTimeoutRef.current = setTimeout(() => {
       setRemoteConnectionFailed(true)
-    }, 5000)
+    }, config.connectionTimeout / 2) // Use half of configured timeout for UI feedback
   }, [])
 
   const disconnectWorker = useCallback(() => {
