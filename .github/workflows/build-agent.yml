@@ -1,11 +1,15 @@
-name: Build Proxy
+name: Build Agent
 
 on:
   push:
     branches:
       - dev
       - hola
+    paths:
+      - 'agent/**'
   pull_request:
+    paths:
+      - 'agent/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,48 +25,47 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: dockforlife-proxy-linux-amd64
-            goos: linux
-            goarch: amd64
-            upload: true
-          - os: ubuntu-latest
-            artifact: dockforlife-proxy-linux-arm64
-            goos: linux
-            goarch: arm64
-            upload: false
+            artifact: dockforlife-agent-linux
+            node-os: linux
+            pkg-target: node18-linux-x64
           - os: macos-latest
-            artifact: dockforlife-proxy-darwin-amd64
-            goos: darwin
-            goarch: amd64
-            upload: false
-          - os: macos-latest
-            artifact: dockforlife-proxy-darwin-arm64
-            goos: darwin
-            goarch: arm64
-            upload: false
+            artifact: dockforlife-agent-mac
+            node-os: darwin
+            pkg-target: node18-macos-x64
           - os: windows-latest
-            artifact: dockforlife-proxy-windows-amd64.exe
-            goos: windows
-            goarch: amd64
-            upload: true
+            artifact: dockforlife-agent-win.exe
+            node-os: win32
+            pkg-target: node18-win-x64
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          go-version: '1.21'
-          cache: true
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: agent/package-lock.json
 
-      - name: Build proxy
-        run: |
-          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -o ${{ matrix.artifact }} .
+      - name: Install dependencies
+        working-directory: agent
+        run: npm ci
+
+      - name: Build TypeScript
+        working-directory: agent
+        run: npm run build
+
+      - name: Install pkg
+        working-directory: agent
+        run: npm install -g pkg
+
+      - name: Package executable
+        working-directory: agent
+        run: pkg . --targets ${{ matrix.pkg-target }} --output ../${{ matrix.artifact }}
 
       - name: Upload artifact
-        if: matrix.upload
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -90,25 +93,25 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-beta
-          release_name: DockForLife v1.0.0-beta
+          release_name: DockForLife Agent v1.0.0-beta
           body: |
-            ## DockForLife v1.0.0-beta
+            ## DockForLife Agent v1.0.0-beta
 
-            Professional OBS remote control with Zero Configuration.
+            Local OBS control agent with Zero Configuration.
 
             ### Downloads
-            - **Windows:** `dockforlife-proxy-windows-amd64.exe`
-            - **Linux:** `dockforlife-proxy-linux-amd64`
+            - **Windows:** `dockforlife-agent-win.exe`
+            - **Linux:** `dockforlife-agent-linux`
+            - **macOS:** `dockforlife-agent-mac`
 
             ### Features
             - Magic Handshake: Automatic Join Code generation
             - Dual-mode: Local + Remote connection persistence
-            - Bilingual: English/Spanish auto-detection
             - Zero Config: Fixed worker URL, no manual setup
 
             ### Usage
             1. Download the binary for your platform
-            2. Run: `./dockforlife-proxy-linux-amd64` (Linux) or double-click (Windows)
+            2. Run: `./dockforlife-agent-linux` (Linux) or double-click (Windows)
             3. Open https://dockforlife.app in your browser
             4. Generate a Join Code and connect from any device
 
@@ -140,15 +143,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: DockForLife ${{ github.ref_name }}
+          release_name: DockForLife Agent ${{ github.ref_name }}
           body: |
-            ## DockForLife ${{ github.ref_name }}
+            ## DockForLife Agent ${{ github.ref_name }}
 
-            Professional OBS remote control.
+            Local OBS control agent.
 
             ### Downloads
-            - **Windows:** `dockforlife-proxy-windows-amd64.exe`
-            - **Linux:** `dockforlife-proxy-linux-amd64`
+            - **Windows:** `dockforlife-agent-win.exe`
+            - **Linux:** `dockforlife-agent-linux`
+            - **macOS:** `dockforlife-agent-mac`
 
             Full release notes: https://github.com/daurydicaprio/dockforlife/releases
           draft: false
