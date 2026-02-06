@@ -55,6 +55,19 @@ export interface LocaleStrings {
     download: string
     downloadFor: string
     agentNote: string
+    clearConnection: string
+    clearConnectionDesc: string
+    clearConnectionConfirm: string
+    linkedCode: string
+    recommended: string
+    downloadCard: {
+      windows: string
+      macos: string
+      linux: string
+      windowsDesc: string
+      macosDesc: string
+      linuxDesc: string
+    }
   }
     toasts: {
       connected: string
@@ -202,6 +215,19 @@ export const locales: Record<Language, LocaleStrings> = {
       download: 'Download',
       downloadFor: 'Download for',
       agentNote: 'Small executable (~7MB). No installation required.',
+      clearConnection: 'Clear Connection',
+      clearConnectionDesc: 'Remove the saved pairing code and disconnect',
+      clearConnectionConfirm: 'Are you sure you want to clear the connection?',
+      linkedCode: 'Linked Agent Code',
+      recommended: 'Recommended',
+      downloadCard: {
+        windows: 'Windows',
+        macos: 'macOS',
+        linux: 'Linux',
+        windowsDesc: 'For Windows 10/11',
+        macosDesc: 'For macOS 11+',
+        linuxDesc: 'For Ubuntu, Fedora, Debian',
+      },
     },
     toasts: {
       connected: 'Connected to OBS',
@@ -347,6 +373,19 @@ export const locales: Record<Language, LocaleStrings> = {
       download: 'Descargar',
       downloadFor: 'Descargar para',
       agentNote: 'Ejecutable pequeño (~7MB). No requiere instalación.',
+      clearConnection: 'Limpiar Conexión',
+      clearConnectionDesc: 'Eliminar el código de emparejamiento guardado',
+      clearConnectionConfirm: '¿Estás seguro de que deseas limpar la conexión?',
+      linkedCode: 'Código de Agente Vinculado',
+      recommended: 'Recomendado',
+      downloadCard: {
+        windows: 'Windows',
+        macos: 'macOS',
+        linux: 'Linux',
+        windowsDesc: 'Para Windows 10/11',
+        macosDesc: 'Para macOS 11+',
+        linuxDesc: 'Para Ubuntu, Fedora, Debian',
+      },
     },
     toasts: {
       connected: 'Conectado a OBS',

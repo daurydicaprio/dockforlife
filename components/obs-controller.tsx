@@ -46,6 +46,12 @@ import {
   HardDrive,
   Lock,
   Palette,
+  Download,
+  Terminal,
+  Apple,
+  Copy,
+  Trash2,
+  RefreshCw,
 } from "lucide-react"
 
 type ButtonType = "Mute" | "Visibility" | "Filter" | "Scene" | "Record" | "Stream"
@@ -255,6 +261,7 @@ const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge"
 
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const [selectedOS, setSelectedOS] = useState<"windows" | "macos" | "linux">("windows")
+  const [clearConnectionDialogOpen, setClearConnectionDialogOpen] = useState(false)
 
   const handleDownloadClick = (os: "windows" | "macos" | "linux") => {
     setSelectedOS(os)
@@ -266,17 +273,30 @@ const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge"
     setDownloadDialogOpen(false)
   }
 
+  const changeLanguage = useCallback((newLang: Language) => {
+    setLang(newLang)
+    setStrings(getLocaleStrings(newLang))
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("dfl_lang", newLang)
+    }
+  }, [])
+
+  const confirmClearConnection = useCallback(() => {
+    window.localStorage.removeItem("dfl_pairing_code")
+    setStoredPairingCode("")
+    setJoinCode("")
+    setConnectionMode("none")
+    setIsRemoteMode(false)
+    setRemoteWaitingForAgent(false)
+    setIsRemoteConnected(false)
+    setClearConnectionDialogOpen(false)
+    showToast(strings.toasts.disconnected, "success")
+  }, [strings])
+
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 2000)
   }, [])
-
-  const resetPairingCode = useCallback(() => {
-    localStorage.removeItem("dfl_pairing_code")
-    setStoredPairingCode("")
-    setJoinCode("")
-    showToast(strings.toasts.disconnected, "success")
-  }, [showToast, strings])
 
   const startRemoteTimeout = useCallback(() => {
     if (remoteTimeoutRef.current) clearTimeout(remoteTimeoutRef.current)
@@ -1127,10 +1147,10 @@ const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge"
             <div className="space-y-6 py-4">
               {isClient && storedPairingCode && (
                 <div className={cn("p-4 rounded-xl text-center border", isDark ? "bg-blue-500/10 border-blue-500/20" : "bg-blue-50 border-blue-200")}>
-                  <p className={cn("text-xs mb-1", isDark ? "text-blue-400" : "text-blue-600")}>Linked Agent Code</p>
+                  <p className={cn("text-xs mb-1", isDark ? "text-blue-400" : "text-blue-600")}>{strings.settings.linkedCode}</p>
                   <p className="text-xl font-mono font-bold tracking-widest">{storedPairingCode}</p>
-                  <Button variant="ghost" size="sm" onClick={resetPairingCode} className={cn("mt-2 text-xs", isDark ? "text-zinc-400 hover:text-white" : "text-gray-500 hover:text-gray-900")}>
-                    Disconnect & Reset
+                  <Button variant="ghost" size="sm" onClick={() => setClearConnectionDialogOpen(true)} className={cn("mt-2 text-xs", isDark ? "text-zinc-400 hover:text-white" : "text-gray-500 hover:text-gray-900")}>
+                    {strings.settings.clearConnection}
                   </Button>
                 </div>
               )}
@@ -1157,87 +1177,190 @@ const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge"
                 <Button variant={isRemoteMode ? "default" : "outline"} className="flex-1 rounded-xl" onClick={() => { disconnectWorker(); setIsRemoteMode(true); connectToWorker() }} disabled={isConnecting && isRemoteMode}>{isConnecting && isRemoteMode ? strings.settings.connecting : strings.settings.remote}</Button>
               </div>
 
-{/* Local Agent Download Section */}
+{/* Local Agent Download Section - Redesigned Cards */}
               <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
-                <Label className="flex items-center gap-2">
-                  <Monitor className="h-4 w-4" />
-                  Download Agent
+                <Label className="flex items-center gap-2 text-sm font-medium mb-3">
+                  <Download className="h-4 w-4" />
+                  {strings.settings.download}
                 </Label>
-                <p className={cn("text-xs mt-1 mb-3", isDark ? "text-zinc-500" : "text-gray-500")}>
-                  Download and run the agent to enable remote control from any device
-                </p>
-                <div className="space-y-3">
-                  <p className={cn("text-xs font-medium", isDark ? "text-zinc-400" : "text-gray-600")}>
-                    {userOS === "windows" ? "Recommended for your system:" : userOS === "macos" ? "Recommended for your system:" : userOS === "linux" ? "Recommended for your system:" : "Select your operating system:"}
-                  </p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      variant={userOS === "windows" ? "default" : "outline"}
-                      size="lg"
-                      className={cn(
-                        "flex flex-col items-center gap-1 py-4 rounded-xl transition-all",
-                        userOS === "windows" 
-                          ? "bg-blue-600 hover:bg-blue-700 border-blue-600" 
-                          : isDark 
-                            ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
-                            : "bg-gray-100 border-gray-200 hover:bg-gray-200"
-                      )}
-                      onClick={() => handleDownloadClick("windows")}
-                    >
-                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                      <span className="text-xs font-medium">Windows</span>
-                      {userOS === "windows" && <span className="text-[10px] opacity-80">Recommended</span>}
-                    </Button>
-                    <Button
-                      variant={userOS === "macos" ? "default" : "outline"}
-                      size="lg"
-                      className={cn(
-                        "flex flex-col items-center gap-1 py-4 rounded-xl transition-all",
-                        userOS === "macos" 
-                          ? "bg-blue-600 hover:bg-blue-700 border-blue-600" 
-                          : isDark 
-                            ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
-                            : "bg-gray-100 border-gray-200 hover:bg-gray-200"
-                      )}
-                      onClick={() => handleDownloadClick("macos")}
-                    >
-                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.21-1.96 1.07-3.11-1.05.05-2.31.71-3.06 1.58-.68.78-1.26 2.02-1.1 3.13 1.17.09 2.37-.72 3.09-1.58z"/></svg>
-                      <span className="text-xs font-medium">macOS</span>
-                      {userOS === "macos" && <span className="text-[10px] opacity-80">Recommended</span>}
-                    </Button>
-                    <Button
-                      variant={userOS === "linux" ? "default" : "outline"}
-                      size="lg"
-                      className={cn(
-                        "flex flex-col items-center gap-1 py-4 rounded-xl transition-all",
-                        userOS === "linux" 
-                          ? "bg-blue-600 hover:bg-blue-700 border-blue-600" 
-                          : isDark 
-                            ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
-                            : "bg-gray-100 border-gray-200 hover:bg-gray-200"
-                      )}
-                      onClick={() => handleDownloadClick("linux")}
-                    >
-                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.315.008-.48.021-1.22.087-2.405.534-3.373 1.19-.989.67-1.75 1.586-2.196 2.646-.448 1.06-.58 2.233-.375 3.364.205 1.13.735 2.18 1.524 3.024.788.844 1.794 1.44 2.905 1.72 1.11.28 2.282.23 3.36-.14 1.077-.37 2.03-1.05 2.75-1.95.72-.9 1.18-1.99 1.32-3.12.14-1.13-.09-2.27-.68-3.27-.59-1-1.48-1.82-2.56-2.36-1.08-.54-2.32-.74-3.56-.58l-.18.02-.12.02-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12z"/></svg>
-                      <span className="text-xs font-medium">Linux</span>
-                      {userOS === "linux" && <span className="text-[10px] opacity-80">Recommended</span>}
-                    </Button>
-                  </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Windows Card */}
+                  <button
+                    onClick={() => handleDownloadClick("windows")}
+                    className={cn(
+                      "relative group flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-300",
+                      userOS === "windows"
+                        ? isDark 
+                          ? "bg-blue-500/20 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.3)]" 
+                          : "bg-blue-50 border-blue-300 shadow-[0_0_20px_rgba(59,130,246,0.2)]"
+                        : isDark 
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800 hover:border-white/20" 
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <Monitor className={cn("h-8 w-8", userOS === "windows" ? "text-blue-500" : "text-zinc-400 group-hover:text-zinc-300")} />
+                    <span className={cn("text-xs font-medium", isDark ? "text-white" : "text-gray-900")}>{strings.settings.downloadCard.windows}</span>
+                    {userOS === "windows" && (
+                      <span className={cn("absolute -top-2 -right-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-500 text-white font-medium")}>
+                        {strings.settings.recommended}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* macOS Card */}
+                  <button
+                    onClick={() => handleDownloadClick("macos")}
+                    className={cn(
+                      "relative group flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-300",
+                      userOS === "macos"
+                        ? isDark 
+                          ? "bg-blue-500/20 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.3)]" 
+                          : "bg-blue-50 border-blue-300 shadow-[0_0_20px_rgba(59,130,246,0.2)]"
+                        : isDark 
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800 hover:border-white/20" 
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <Apple className={cn("h-8 w-8", userOS === "macos" ? "text-blue-500" : "text-zinc-400 group-hover:text-zinc-300")} />
+                    <span className={cn("text-xs font-medium", isDark ? "text-white" : "text-gray-900")}>{strings.settings.downloadCard.macos}</span>
+                    {userOS === "macos" && (
+                      <span className={cn("absolute -top-2 -right-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-500 text-white font-medium")}>
+                        {strings.settings.recommended}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Linux Card */}
+                  <button
+                    onClick={() => handleDownloadClick("linux")}
+                    className={cn(
+                      "relative group flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-300",
+                      userOS === "linux"
+                        ? isDark 
+                          ? "bg-blue-500/20 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.3)]" 
+                          : "bg-blue-50 border-blue-300 shadow-[0_0_20px_rgba(59,130,246,0.2)]"
+                        : isDark 
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800 hover:border-white/20" 
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <Terminal className={cn("h-8 w-8", userOS === "linux" ? "text-blue-500" : "text-zinc-400 group-hover:text-zinc-300")} />
+                    <span className={cn("text-xs font-medium", isDark ? "text-white" : "text-gray-900")}>{strings.settings.downloadCard.linux}</span>
+                    {userOS === "linux" && (
+                      <span className={cn("absolute -top-2 -right-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-500 text-white font-medium")}>
+                        {strings.settings.recommended}
+                      </span>
+                    )}
+                  </button>
                 </div>
-                <p className={cn("text-[10px] mt-3", isDark ? "text-zinc-600" : "text-gray-400")}>
-                  {RELEASE_VERSION} • ~7MB • No installation required
+                <p className={cn("text-[10px] mt-3 text-center", isDark ? "text-zinc-500" : "text-gray-400")}>
+                  {RELEASE_VERSION} • ~7MB • {strings.agent.note}
                 </p>
               </div>
 
-              <div className="pt-4 border-t border-white/10">
-                <Label>{strings.settings.language}</Label>
-                <div className="flex gap-2 mt-2">
-                  <Button variant={lang === "en" ? "default" : "outline"} className="flex-1 rounded-xl" onClick={() => { setLang("en"); setStrings(getLocaleStrings("en")); localStorage.setItem("dfl_lang", "en") }}>English</Button>
-                  <Button variant={lang === "es" ? "default" : "outline"} className="flex-1 rounded-xl" onClick={() => { setLang("es"); setStrings(getLocaleStrings("es")); localStorage.setItem("dfl_lang", "es") }}>Español</Button>
+              {/* Clear Connection */}
+              {storedPairingCode && (
+                <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
+                  <button
+                    onClick={() => setClearConnectionDialogOpen(true)}
+                    className={cn(
+                      "w-full flex items-center justify-between gap-3 p-3 rounded-xl border transition-all",
+                      isDark 
+                        ? "bg-red-500/10 border-red-500/20 hover:bg-red-500/20" 
+                        : "bg-red-50 border-red-200 hover:bg-red-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn("p-2 rounded-lg", isDark ? "bg-red-500/20" : "bg-red-100")}>
+                        <Trash2 className={cn("h-4 w-4", isDark ? "text-red-400" : "text-red-600")} />
+                      </div>
+                      <span className={cn("text-sm font-medium", isDark ? "text-red-400" : "text-red-600")}>
+                        {strings.settings.clearConnection}
+                      </span>
+                    </div>
+                    <RefreshCw className={cn("h-4 w-4", isDark ? "text-zinc-500" : "text-gray-400")} />
+                  </button>
+                </div>
+              )}
+
+              {/* Language Switcher */}
+              <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
+                <Label className="flex items-center gap-2 text-sm font-medium mb-3">
+                  <Globe className="h-4 w-4" />
+                  {strings.settings.language}
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => changeLanguage("en")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
+                      lang === "en"
+                        ? isDark 
+                          ? "bg-blue-500/20 border-blue-500/50" 
+                          : "bg-blue-50 border-blue-300"
+                        : isDark 
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <span className={cn("text-sm font-medium", lang === "en" ? "text-blue-400" : isDark ? "text-zinc-400" : "text-gray-600")}>
+                      {strings.settings.languageEn}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => changeLanguage("es")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
+                      lang === "es"
+                        ? isDark 
+                          ? "bg-blue-500/20 border-blue-500/50" 
+                          : "bg-blue-50 border-blue-300"
+                        : isDark 
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <span className={cn("text-sm font-medium", lang === "es" ? "text-blue-400" : isDark ? "text-zinc-400" : "text-gray-600")}>
+                      {strings.settings.languageEs}
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear Connection Confirmation Dialog */}
+      <Dialog open={clearConnectionDialogOpen} onOpenChange={setClearConnectionDialogOpen}>
+        <DialogContent className={cn("sm:max-w-md border", isDark ? "bg-slate-900 border-white/10 text-white" : "bg-white border-gray-200 text-gray-900")}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <Trash2 className="h-5 w-5" />
+              {strings.settings.clearConnection}
+            </DialogTitle>
+            <DialogDescription className={cn("text-sm", isDark ? "text-zinc-400" : "text-gray-500")}>
+              {strings.settings.clearConnectionConfirm}
+            </DialogDescription>
+          </DialogHeader>
+          {storedPairingCode && (
+            <div className={cn("p-4 rounded-xl mt-2", isDark ? "bg-zinc-800/50" : "bg-gray-100")}>
+              <p className={cn("text-xs mb-2", isDark ? "text-zinc-500" : "text-gray-500")}>{strings.settings.linkedCode}</p>
+              <div className="flex items-center justify-center gap-2">
+                <code className={cn("text-lg font-mono font-bold tracking-widest px-4 py-2 rounded-lg", isDark ? "bg-zinc-900 text-blue-400" : "bg-white text-blue-600 border")}>
+                  {storedPairingCode}
+                </code>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setClearConnectionDialogOpen(false)} className="flex-1">
+              {strings.dialogs.cancel}
+            </Button>
+            <Button variant="destructive" onClick={confirmClearConnection} className="flex-1 bg-red-600 hover:bg-red-700">
+              {strings.settings.clearConnection}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
