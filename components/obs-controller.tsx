@@ -834,7 +834,7 @@ export function OBSController() {
             isDark ? "bg-slate-900/80 border-white/10 shadow-black/50" : "bg-white/90 border-gray-200 shadow-gray-200/50")}>
             {/* Donate */}
             <a href="https://paypal.me/daurydicaprio" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium bg-gradient-to-r from-pink-500/20 to-rose-500/20 text-pink-500 hover:from-pink-500/30 hover:to-rose-500/30 transition-all border border-pink-500/20">
-              <Heart className="h-3 w-3" /> Donate
+              <Heart className="h-3 w-3" /> {strings.footer.donate}
             </a>
 
             {/* Connection Status */}
@@ -847,7 +847,7 @@ export function OBSController() {
                     : isDark ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-100 text-emerald-700 border-emerald-300"
                   : isDark ? "bg-zinc-800/50 text-zinc-500 border-zinc-700/50" : "bg-gray-200 text-gray-500 border-gray-300")}>
               {isConnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-              <span>{isConnecting ? "CONNECTING" : connected ? (connectionMode === "remote" ? "REMOTE" : "LOCAL") : "OFFLINE"}</span>
+              <span>{isConnecting ? strings.header.connecting : connected ? (connectionMode === "remote" ? strings.header.remote : strings.header.local) : strings.header.offline}</span>
             </div>
 
             {/* Security Button */}
@@ -857,7 +857,7 @@ export function OBSController() {
                 "p-1.5 rounded-full border transition-all duration-200 hover:scale-105",
                 isDark ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100"
               )}
-              title="Security & Privacy"
+              title={strings.security.title}
             >
               <Shield className="h-4 w-4" />
             </button>
