@@ -123,13 +123,36 @@ function Logo({ className }: { className?: string }) {
   )
 }
 
-export function OBSController() {
+function getInitialPairingCode(): string {
+    if (typeof window === "undefined") return ""
+    return window.localStorage.getItem("dfl_pairing_code") || ""
+  }
+
+  function getInitialLang(): Language {
+    if (typeof window === "undefined") return "en"
+    const saved = window.localStorage.getItem("dfl_lang")
+    if (saved === "en" || saved === "es") return saved
+    const browserLang = navigator.language?.toLowerCase() || ""
+    if (browserLang.startsWith("es")) return "es"
+    return "en"
+  }
+
+  function getInitialUserOS(): "windows" | "macos" | "linux" | "other" {
+    if (typeof window === "undefined") return "other"
+    const ua = navigator.userAgent.toLowerCase()
+    if (ua.includes("windows")) return "windows"
+    if (ua.includes("mac") || ua.includes("darwin")) return "macos"
+    if (ua.includes("linux") || ua.includes("ubuntu") || ua.includes("fedora") || ua.includes("debian")) return "linux"
+    return "other"
+  }
+
+  export function OBSController() {
   const obsRef = useRef<OBSWebSocket | null>(null)
   const workerRef = useRef<WebSocket | null>(null)
   const [deck, setDeck] = useState<DeckButton[]>([])
   const [connected, setConnected] = useState(false)
-  const [lang, setLang] = useState<Language>("en")
-  const [strings, setStrings] = useState<LocaleStrings>(getLocaleStrings("en"))
+  const [lang, setLang] = useState<Language>(getInitialLang)
+  const [strings, setStrings] = useState<LocaleStrings>(() => getLocaleStrings(getInitialLang()))
   const [obsData, setObsData] = useState<OBSData>({
     scenes: [],
     inputs: [],
@@ -156,8 +179,8 @@ export function OBSController() {
   const [filters, setFilters] = useState<string[]>([])
   const [wsUrl, setWsUrl] = useState("ws://127.0.0.1:4455")
   const [wsPassword, setWsPassword] = useState("")
-  const [joinCode, setJoinCode] = useState("")
-  const [storedPairingCode, setStoredPairingCode] = useState("")
+  const [joinCode, setJoinCode] = useState(getInitialPairingCode)
+  const [storedPairingCode, setStoredPairingCode] = useState(getInitialPairingCode)
   const [isClient, setIsClient] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -167,55 +190,39 @@ export function OBSController() {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [adapter, setAdapter] = useState<OBSWebSocketAdapter | null>(null)
-  const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">("other")
+  const [userOS, setUserOS] = useState<"windows" | "macos" | "linux" | "other">(() => getInitialUserOS())
   const [isRemoteMode, setIsRemoteMode] = useState(false)
   const [isRemoteConnected, setIsRemoteConnected] = useState(false)
-  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none" | "dual" | "bridge">("none")
+  const [connectionMode, setConnectionMode] = useState<"local" | "remote" | "none" | "dual" | "bridge">(() => {
+    if (typeof window === "undefined") return "none"
+    return window.localStorage.getItem("dfl_pairing_code") ? "remote" : "none"
+  })
   const [isMobile, setIsMobile] = useState(false)
-  const [isClientMode, setIsClientMode] = useState(false)
+  const [isClientMode, setIsClientMode] = useState(() => {
+    if (typeof window === "undefined") return false
+    return !!window.localStorage.getItem("dfl_pairing_code")
+  })
   const [remoteWaitingForAgent, setRemoteWaitingForAgent] = useState(false)
   const [remoteConnectionFailed, setRemoteConnectionFailed] = useState(false)
   const [hasOBSData, setHasOBSData] = useState(false)
   const [obsDataError, setObsDataError] = useState<string | null>(null)
-  const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
-const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
+  const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
 
   useEffect(() => {
+    if (typeof window === "undefined") return
     setIsClient(true)
+    if (joinCode && !connected && !isConnecting) {
+      setIsRemoteMode(true)
+      connectToWorker()
+    }
   }, [])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    
-    const savedCode = window.localStorage.getItem("dfl_pairing_code")
-    if (savedCode) {
-      setStoredPairingCode(savedCode)
-      setJoinCode(savedCode)
-    }
-  }, [isClient])
-
-  useEffect(() => {
     if (!isClient || !joinCode) return
-    
     window.localStorage.setItem("dfl_pairing_code", joinCode)
-    setStoredPairingCode(joinCode)
   }, [joinCode, isClient])
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    
-    const ua = navigator.userAgent.toLowerCase()
-    if (ua.includes("windows")) setUserOS("windows")
-    else if (ua.includes("mac") || ua.includes("darwin")) setUserOS("macos")
-    else if (ua.includes("linux") || ua.includes("ubuntu") || ua.includes("fedora") || ua.includes("debian")) setUserOS("linux")
-  }, [isClient])
-
-  useEffect(() => {
-    if (isClient && storedPairingCode) {
-      setJoinCode(storedPairingCode)
-    }
-  }, [isClient, storedPairingCode])
 
   const RELEASE_VERSION = "v0.1.0-alpha"
 
@@ -484,6 +491,35 @@ const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge"
 
       const obsAdapter = new OBSWebSocketAdapter(obs)
       setAdapter(obsAdapter)
+
+      ;(obs as any).on("CurrentProgramSceneChanged", (data: unknown) => {
+        console.log("Scene changed:", (data as { sceneName: string }).sceneName)
+        setObsData((prev) => ({ ...prev }))
+      })
+
+      ;(obs as any).on("SourceMuteStateChanged", (data: unknown) => {
+        const d = data as { inputName: string; inputMuted: boolean }
+        console.log("Mute state changed:", d.inputName, d.inputMuted)
+        setMuteStates((prev) => ({ ...prev, [d.inputName]: d.inputMuted }))
+      })
+
+      ;(obs as any).on("RecordingStateChanged", (data: unknown) => {
+        const d = data as { outputState: string }
+        console.log("Recording state changed:", d.outputState)
+        setObsData((prev) => ({ ...prev, rec: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED" }))
+      })
+
+      ;(obs as any).on("StreamStatusChanged", (data: unknown) => {
+        const d = data as { outputState: string }
+        console.log("Stream status changed:", d.outputState)
+        setObsData((prev) => ({ ...prev, str: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED" }))
+      })
+
+      ;(obs as any).on("SceneItemVisibilityChanged", (data: unknown) => {
+        const d = data as { sceneItemId: number; sceneItemVisible: boolean }
+        console.log("Visibility changed:", d.sceneItemId, d.sceneItemVisible)
+        setObsData((prev) => ({ ...prev }))
+      })
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
