@@ -242,16 +242,12 @@ export function OBSController() {
           } else if (data.type === "obs-data" || data.type === "obs_data") {
             console.log("OBS DATA RECEIVED:", JSON.stringify(data, null, 2))
             
-            const obsPayload = data.data
-            if (!obsPayload || typeof obsPayload !== "object") {
-              console.log("Waiting for OBS data...")
-              return
-            }
-            
             setObsDataError(null)
-            const scenes = Array.isArray(obsPayload.scenes) ? obsPayload.scenes : []
-            const inputs = Array.isArray(obsPayload.inputs) ? obsPayload.inputs : []
-            const currentScene = obsPayload.currentScene || ""
+            const scenes = Array.isArray(data.scenes) ? data.scenes : []
+            const inputs = Array.isArray(data.inputs) ? data.inputs : []
+            const currentScene = data.currentScene || ""
+            
+            console.log("Processing scenes:", scenes.length, "inputs:", inputs.length)
             
             setObsData((prev) => ({ 
               ...prev, 
