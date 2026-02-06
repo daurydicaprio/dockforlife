@@ -194,9 +194,68 @@ useEffect(() => {
     setStoredPairingCode(joinCode)
   }, [joinCode, isClient])
 
+  useEffect(() => {
+    if (!isClient) return
+    const ua = navigator.userAgent.toLowerCase()
+    if (ua.includes("windows")) setUserOS("windows")
+    else if (ua.includes("mac") || ua.includes("darwin")) setUserOS("macos")
+    else if (ua.includes("linux") || ua.includes("ubuntu") || ua.includes("fedora") || ua.includes("debian")) setUserOS("linux")
+  }, [isClient])
 
+  const RELEASE_VERSION = "v0.1.0-alpha"
 
+  const getDownloadUrl = (os: "windows" | "macos" | "linux") => {
+    const urls = {
+      windows: `https://github.com/daurydicaprio/dockforlife/releases/download/${RELEASE_VERSION}/dockforlife-win.exe`,
+      macos: `https://github.com/daurydicaprio/dockforlife/releases/download/${RELEASE_VERSION}/dockforlife-macos`,
+      linux: `https://github.com/daurydicaprio/dockforlife/releases/download/${RELEASE_VERSION}/dockforlife-linux`,
+    }
+    return urls[os]
+  }
 
+  const downloadInstructions = {
+    windows: {
+      title: "Windows",
+      steps: [
+        "Download dockforlife-win.exe",
+        "Double-click the downloaded file",
+        "The agent will start automatically",
+        "Use the code shown to connect from your phone",
+      ],
+    },
+    macos: {
+      title: "macOS",
+      steps: [
+        "Download dockforlife-macos",
+        "Open Terminal and run: chmod +x dockforlife-macos",
+        "Run the agent: ./dockforlife-macos",
+        "Use the code shown to connect from your phone",
+      ],
+    },
+    linux: {
+      title: "Linux",
+      steps: [
+        "Download dockforlife-linux",
+        "Open Terminal in the download folder",
+        "Run: chmod +x dockforlife-linux",
+        "Run: ./dockforlife-linux",
+        "Use the code shown to connect from your phone",
+      ],
+    },
+  }
+
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
+  const [selectedOS, setSelectedOS] = useState<"windows" | "macos" | "linux">("windows")
+
+  const handleDownloadClick = (os: "windows" | "macos" | "linux") => {
+    setSelectedOS(os)
+    setDownloadDialogOpen(true)
+  }
+
+  const proceedDownload = () => {
+    window.open(getDownloadUrl(selectedOS), "_blank")
+    setDownloadDialogOpen(false)
+  }
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
@@ -1089,57 +1148,75 @@ useEffect(() => {
                 <Button variant={isRemoteMode ? "default" : "outline"} className="flex-1 rounded-xl" onClick={() => { disconnectWorker(); setIsRemoteMode(true); connectToWorker() }} disabled={isConnecting && isRemoteMode}>{isConnecting && isRemoteMode ? strings.settings.connecting : strings.settings.remote}</Button>
               </div>
 
-              {/* Local Agent Download Section */}
+{/* Local Agent Download Section */}
               <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
                 <Label className="flex items-center gap-2">
                   <Monitor className="h-4 w-4" />
-                  Download Local Agent
+                  Download Agent
                 </Label>
                 <p className={cn("text-xs mt-1 mb-3", isDark ? "text-zinc-500" : "text-gray-500")}>
-                  Download and run the agent on your computer to enable remote control from your phone
+                  Download and run the agent to enable remote control from any device
                 </p>
-                <div className="space-y-2">
-                  <p className={cn("text-xs", isDark ? "text-zinc-400" : "text-gray-600")}>
+                <div className="space-y-3">
+                  <p className={cn("text-xs font-medium", isDark ? "text-zinc-400" : "text-gray-600")}>
                     {userOS === "windows" ? "Recommended for your system:" : userOS === "macos" ? "Recommended for your system:" : userOS === "linux" ? "Recommended for your system:" : "Select your operating system:"}
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     <Button
                       variant={userOS === "windows" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs rounded-lg"
-                      onClick={() => window.open(`${getGitHubReleaseUrl()}/download/latest/dockforlife-agent-windows-amd64.exe`, "_blank")}
+                      size="lg"
+                      className={cn(
+                        "flex flex-col items-center gap-1 py-4 rounded-xl transition-all",
+                        userOS === "windows" 
+                          ? "bg-blue-600 hover:bg-blue-700 border-blue-600" 
+                          : isDark 
+                            ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                            : "bg-gray-100 border-gray-200 hover:bg-gray-200"
+                      )}
+                      onClick={() => handleDownloadClick("windows")}
                     >
-                      <div className="flex items-center gap-1">
-                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                        Windows
-                      </div>
+                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                      <span className="text-xs font-medium">Windows</span>
+                      {userOS === "windows" && <span className="text-[10px] opacity-80">Recommended</span>}
                     </Button>
                     <Button
                       variant={userOS === "macos" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs rounded-lg"
-                      onClick={() => window.open(`${getGitHubReleaseUrl()}/download/latest/dockforlife-agent-macos-amd64`, "_blank")}
+                      size="lg"
+                      className={cn(
+                        "flex flex-col items-center gap-1 py-4 rounded-xl transition-all",
+                        userOS === "macos" 
+                          ? "bg-blue-600 hover:bg-blue-700 border-blue-600" 
+                          : isDark 
+                            ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                            : "bg-gray-100 border-gray-200 hover:bg-gray-200"
+                      )}
+                      onClick={() => handleDownloadClick("macos")}
                     >
-                      <div className="flex items-center gap-1">
-                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.21-1.96 1.07-3.11-1.05.05-2.31.71-3.06 1.58-.68.78-1.26 2.02-1.1 3.13 1.17.09 2.37-.72 3.09-1.58z"/></svg>
-                        macOS
-                      </div>
+                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.21-1.96 1.07-3.11-1.05.05-2.31.71-3.06 1.58-.68.78-1.26 2.02-1.1 3.13 1.17.09 2.37-.72 3.09-1.58z"/></svg>
+                      <span className="text-xs font-medium">macOS</span>
+                      {userOS === "macos" && <span className="text-[10px] opacity-80">Recommended</span>}
                     </Button>
                     <Button
                       variant={userOS === "linux" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs rounded-lg"
-                      onClick={() => window.open(`${getGitHubReleaseUrl()}/download/latest/dockforlife-agent-linux-amd64`, "_blank")}
+                      size="lg"
+                      className={cn(
+                        "flex flex-col items-center gap-1 py-4 rounded-xl transition-all",
+                        userOS === "linux" 
+                          ? "bg-blue-600 hover:bg-blue-700 border-blue-600" 
+                          : isDark 
+                            ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                            : "bg-gray-100 border-gray-200 hover:bg-gray-200"
+                      )}
+                      onClick={() => handleDownloadClick("linux")}
                     >
-                      <div className="flex items-center gap-1">
-                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.315.008-.48.021-1.22.087-2.405.534-3.373 1.19-.989.67-1.75 1.586-2.196 2.646-.448 1.06-.58 2.233-.375 3.364.205 1.13.735 2.18 1.524 3.024.788.844 1.794 1.44 2.905 1.72 1.11.28 2.282.23 3.36-.14 1.077-.37 2.03-1.05 2.75-1.95.72-.9 1.18-1.99 1.32-3.12.14-1.13-.09-2.27-.68-3.27-.59-1-1.48-1.82-2.56-2.36-1.08-.54-2.32-.74-3.56-.58l-.18.02-.12.02-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12zM8.96 13.5c-1.55.01-3.08.4-4.45 1.13-1.37.73-2.54 1.8-3.4 3.11-.43.65-.75 1.36-.95 2.11-.2.75-.28 1.53-.24 2.3.04.77.22 1.52.53 2.23.31.71.74 1.36 1.28 1.92.54.56 1.18 1.02 1.89 1.36.71.34 1.48.55 2.27.62.79.07 1.58 0 2.35-.21.77-.21 1.49-.55 2.14-.99.65-.44 1.22-.98 1.68-1.6.46-.62.81-1.32 1.03-2.07.22-.75.31-1.54.26-2.32-.05-.78-.23-1.54-.54-2.25-.31-.71-.75-1.36-1.29-1.91-.54-.55-1.19-1-1.9-1.33-.71-.33-1.48-.54-2.28-.6-.8-.06-1.6.01-2.38.22-.78.21-1.51.56-2.17 1.01-.66.45-1.24 1-1.71 1.62-.47.62-.83 1.32-1.06 2.07-.23.75-.33 1.54-.29 2.32.04.78.22 1.55.53 2.27.31.72.76 1.38 1.31 1.94.55.56 1.21 1.02 1.93 1.36.72.34 1.5.55 2.3.61.8.06 1.61-.01 2.39-.22.78-.21 1.52-.56 2.19-1.02.67-.46 1.25-1.02 1.72-1.65.47-.63.83-1.34 1.05-2.09.22-.75.32-1.54.27-2.33-.05-.79-.24-1.56-.55-2.29"/></svg>
-                        Linux
-                      </div>
+                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.315.008-.48.021-1.22.087-2.405.534-3.373 1.19-.989.67-1.75 1.586-2.196 2.646-.448 1.06-.58 2.233-.375 3.364.205 1.13.735 2.18 1.524 3.024.788.844 1.794 1.44 2.905 1.72 1.11.28 2.282.23 3.36-.14 1.077-.37 2.03-1.05 2.75-1.95.72-.9 1.18-1.99 1.32-3.12.14-1.13-.09-2.27-.68-3.27-.59-1-1.48-1.82-2.56-2.36-1.08-.54-2.32-.74-3.56-.58l-.18.02-.12.02-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12l-.12.01h-.12z"/></svg>
+                      <span className="text-xs font-medium">Linux</span>
+                      {userOS === "linux" && <span className="text-[10px] opacity-80">Recommended</span>}
                     </Button>
                   </div>
                 </div>
-                <p className="text-[10px] text-zinc-600 mt-2">
-                  GitHub Actions will build the agent automatically. Run it and use the code to connect from your phone.
+                <p className={cn("text-[10px] mt-3", isDark ? "text-zinc-600" : "text-gray-400")}>
+                  {RELEASE_VERSION} • ~7MB • No installation required
                 </p>
               </div>
 
@@ -1152,6 +1229,45 @@ useEffect(() => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Download Instructions Dialog */}
+      <Dialog open={downloadDialogOpen} onOpenChange={setDownloadDialogOpen}>
+        <DialogContent className={cn("sm:max-w-md border", isDark ? "bg-slate-900 border-white/10 text-white" : "bg-white border-gray-200 text-gray-900")}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Monitor className="h-5 w-5 text-blue-500" />
+              {downloadInstructions[selectedOS].title} Setup
+            </DialogTitle>
+            <DialogDescription className={cn("text-sm", isDark ? "text-zinc-400" : "text-gray-500")}>
+              Follow these steps to run the DockForLife agent on your computer
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className={cn("rounded-xl p-4", isDark ? "bg-zinc-800/50" : "bg-gray-100")}>
+              <ol className={cn("space-y-3 text-sm", isDark ? "text-zinc-300" : "text-gray-700")}>
+                {downloadInstructions[selectedOS].steps.map((step, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <span className={cn("flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold", isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-600")}>
+                      {index + 1}
+                    </span>
+                    <span className="flex-1">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <div className={cn("p-3 rounded-lg text-xs", isDark ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border border-emerald-200")}>
+              <p className="font-medium">Pro tip:</p>
+              <p>{selectedOS === "linux" || selectedOS === "macos" ? "Run the agent in the background with: nohup ./dockforlife-linux &" : "The agent runs silently in the background. Check system tray if needed."}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDownloadDialogOpen(false)}>Cancel</Button>
+            <Button onClick={proceedDownload} className="bg-blue-600 hover:bg-blue-700">
+              Download Now
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
