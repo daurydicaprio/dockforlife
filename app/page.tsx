@@ -1,15 +1,10 @@
+"use client"
+
 import dynamic from "next/dynamic"
 
 const OBSController = dynamic(() => import("@/components/obs-controller").then(mod => mod.OBSController), {
   ssr: false,
-  loading: () => (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-sm text-zinc-400">Cargando DockForLife...</span>
-      </div>
-    </div>
-  ),
+  loading: () => <p className="text-white text-center mt-10">Loading DockForLife...</p>,
 })
 
 export default function Home() {
