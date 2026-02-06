@@ -168,6 +168,7 @@ export function OBSController() {
   const [remoteWaitingForAgent, setRemoteWaitingForAgent] = useState(false)
   const [remoteConnectionFailed, setRemoteConnectionFailed] = useState(false)
   const [hasOBSData, setHasOBSData] = useState(false)
+  const [obsDataError, setObsDataError] = useState<string | null>(null)
   const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
@@ -220,6 +221,7 @@ export function OBSController() {
       ws.onopen = () => ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
 
       ws.onmessage = (event) => {
+          console.log("RAW DATA RECEIVED:", event.data)
         try {
           const data = JSON.parse(event.data as string)
 
@@ -237,10 +239,19 @@ export function OBSController() {
             setModalOpen(false)
             showToast(strings.toasts.connected, "success")
           } else if (data.type === "obs_data") {
+            // Validate structure before processing
+            if (!data || typeof data !== "object") {
+              setObsDataError("Error: Formato de datos de OBS no reconocido (datos inválidos)")
+              return
+            }
+            if (!Array.isArray(data.scenes) || !Array.isArray(data.inputs)) {
+              setObsDataError("Error: Formato de datos de OBS no reconocido (estructura inválida)")
+              return
+            }
             try {
-              // Validate incoming data structure to prevent crashes
-              const scenes = Array.isArray(data.scenes) ? data.scenes : [];
-              const inputs = Array.isArray(data.inputs) ? data.inputs : [];
+              setObsDataError(null)
+              const scenes = data.scenes || []
+              const inputs = data.inputs || []
               
               setObsData((prev) => ({ ...prev, scenes, inputs }))
               
@@ -601,11 +612,11 @@ export function OBSController() {
 
   const getTargetList = useMemo(() => {
     switch (formData.type) {
-      case "Scene": return obsData.scenes.map((s) => s.sceneName)
-      case "Mute": return obsData.inputs.map((i) => i.inputName)
-      default: return obsData.allSources
+      case "Scene": return (obsData?.scenes || []).map((s) => s.sceneName)
+      case "Mute": return (obsData?.inputs || []).map((i) => i.inputName)
+      default: return obsData?.allSources || []
     }
-  }, [formData.type, obsData.scenes, obsData.inputs, obsData.allSources])
+  }, [formData.type, obsData])
 
   const needsTarget = !["Record", "Stream"].includes(formData.type)
 
@@ -639,6 +650,15 @@ export function OBSController() {
         </div>
       )}
 
+      {obsDataError && (
+        <div className="px-4 mb-4">
+          <div className={cn("max-w-md mx-auto px-4 py-4 rounded-xl text-sm text-center border",
+            isDark ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-red-100 text-red-700 border-red-200")}>
+            <span className="font-medium">{obsDataError}</span>
+          </div>
+        </div>
+      )}
+
       {/* Dock Container */}
       <main className="flex-1 flex flex-col items-center px-4 pb-40">
         <div className="w-full max-w-5xl">
@@ -646,11 +666,11 @@ export function OBSController() {
           <div className={cn("backdrop-blur-md rounded-2xl p-8 border",
             isDark ? "bg-slate-900/60 border-white/10 shadow-lg shadow-black/20" : "bg-white/80 border-gray-200 shadow-md shadow-gray-200/50")}>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
-              {deck.map((btn, i) => {
+              {(deck || []).map((btn, i) => {
                 // Check active state for each button type
-                const isRecording = btn.type === "Record" && obsData.rec
-                const isStreaming = btn.type === "Stream" && obsData.str
-                const isMuted = Boolean(btn.type === "Mute" && btn.target && muteStates[btn.target])
+                const isRecording = btn.type === "Record" && (obsData?.rec || false)
+                const isStreaming = btn.type === "Stream" && (obsData?.str || false)
+                const isMuted = Boolean(btn.type === "Mute" && btn.target && (muteStates || {})[btn.target])
                 
                 // Button is active if it's in its active state (recording, streaming, or muted for mute buttons)
                 const isActive = isRecording || isStreaming || (btn.type === "Mute" && isMuted)
@@ -1133,7 +1153,7 @@ export function OBSController() {
                 <Label>{strings.dialogs.filter}</Label>
                 <Select value={formData.filter || ""} onValueChange={(value) => setFormData({ ...formData, filter: value })}>
                   <SelectTrigger className={cn("rounded-md h-12", isDark ? "bg-zinc-900 border-white/10" : "bg-gray-50 border-gray-200")}><SelectValue placeholder={strings.dialogs.selectFilter} /></SelectTrigger>
-                  <SelectContent>{filters.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(filters || []).map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             )}
