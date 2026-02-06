@@ -83,12 +83,22 @@ export interface LocaleStrings {
     dialogs: {
       editTitle: string
       addTitle: string
+      label: string
+      action: string
+      target: string
+      filter: string
+      idleColor: string
+      activeColor: string
+      customColor: string
+      buttonName: string
+      selectTarget: string
+      selectFilter: string
       save: string
       deleteTitle: string
       deleteDesc: string
       cancel: string
       delete: string
-  }
+    }
   onboarding: {
     title: string
     subtitle: string
@@ -113,6 +123,25 @@ export interface LocaleStrings {
     offlineMode: string
     offlineModeDesc: string
     ok: string
+  }
+  help: {
+    title: string
+    subtitle: string
+    desktopTitle: string
+    desktopDesc1: string
+    desktopDesc2: string
+    desktopDesc3: string
+    remoteTitle: string
+    remoteDesc1: string
+    remoteDesc2: string
+    remoteDesc3: string
+    remoteDesc4: string
+    tipsTitle: string
+    tip1: string
+    tip2: string
+    tip3: string
+    tip4: string
+    gotIt: string
   }
 }
 
@@ -200,6 +229,16 @@ export const locales: Record<Language, LocaleStrings> = {
     dialogs: {
       editTitle: 'Edit Button',
       addTitle: 'Add Button',
+      label: 'Label',
+      action: 'Action',
+      target: 'Target',
+      filter: 'Filter',
+      idleColor: 'Normal',
+      activeColor: 'Active',
+      customColor: 'Custom color',
+      buttonName: 'Button name',
+      selectTarget: 'Select target',
+      selectFilter: 'Select filter',
       save: 'Save',
       deleteTitle: 'Delete button?',
       deleteDesc: 'This action cannot be undone.',
@@ -230,6 +269,25 @@ export const locales: Record<Language, LocaleStrings> = {
       offlineMode: 'Works offline',
       offlineModeDesc: 'App works without internet once loaded.',
       ok: 'Got it',
+    },
+    help: {
+      title: 'How to use DockForLife',
+      subtitle: 'Control OBS from any device',
+      desktopTitle: 'Desktop / Web Mode',
+      desktopDesc1: 'Connect directly to OBS via WebSocket (port 4455)',
+      desktopDesc2: 'Create buttons for your favorite actions',
+      desktopDesc3: 'Double-tap buttons to edit, drag to reorder',
+      remoteTitle: 'Mobile / Remote Mode',
+      remoteDesc1: 'Download the Local Agent on your computer',
+      remoteDesc2: 'Run the agent - it will connect automatically',
+      remoteDesc3: 'Enter the code on your phone to connect',
+      remoteDesc4: 'Control OBS from anywhere!',
+      tipsTitle: 'Tips',
+      tip1: 'Double-tap any button to edit its action',
+      tip2: 'Drag buttons to reorder them',
+      tip3: 'Use the + button to add new actions',
+      tip4: 'Available actions: Mute, Record, Stream, Change Scene, Toggle Filters',
+      gotIt: 'Got it!',
     },
   },
   es: {
@@ -315,6 +373,16 @@ export const locales: Record<Language, LocaleStrings> = {
     dialogs: {
       editTitle: 'Editar Botón',
       addTitle: 'Añadir Botón',
+      label: 'Etiqueta',
+      action: 'Acción',
+      target: 'Objetivo',
+      filter: 'Filtro',
+      idleColor: 'Normal',
+      activeColor: 'Activo',
+      customColor: 'Color personalizado',
+      buttonName: 'Nombre del botón',
+      selectTarget: 'Seleccionar objetivo',
+      selectFilter: 'Seleccionar filtro',
       save: 'Guardar',
       deleteTitle: '¿Eliminar botón?',
       deleteDesc: 'Esta acción no se puede deshacer.',
@@ -345,6 +413,25 @@ export const locales: Record<Language, LocaleStrings> = {
       offlineMode: 'Funciona offline',
       offlineModeDesc: 'La app funciona sin internet una vez cargada.',
       ok: 'Entendido',
+    },
+    help: {
+      title: 'Cómo usar DockForLife',
+      subtitle: 'Controla OBS desde cualquier dispositivo',
+      desktopTitle: 'Modo Escritorio / Web',
+      desktopDesc1: 'Conecta directamente a OBS vía WebSocket (puerto 4455)',
+      desktopDesc2: 'Crea botones para tus acciones favoritas',
+      desktopDesc3: 'Doble toque para editar, arrastra para reordenar',
+      remoteTitle: 'Modo Móvil / Remoto',
+      remoteDesc1: 'Descarga el Agente Local en tu computadora',
+      remoteDesc2: 'Ejecuta el agente - se conectará automáticamente',
+      remoteDesc3: 'Ingresa el código en tu teléfono para conectar',
+      remoteDesc4: '¡Controla OBS desde cualquier lugar!',
+      tipsTitle: 'Consejos',
+      tip1: 'Doble toque en cualquier botón para editar su acción',
+      tip2: 'Arrastra los botones para reordenarlos',
+      tip3: 'Usa el botón + para agregar nuevas acciones',
+      tip4: 'Acciones disponibles: Mute, Grabar, Transmitir, Cambiar Escena, Filtros',
+      gotIt: '¡Entendido!',
     },
   },
 }

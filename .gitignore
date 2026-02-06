@@ -53,3 +53,4 @@ plan.md
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+agent/dist
