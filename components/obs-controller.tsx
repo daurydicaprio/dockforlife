@@ -218,65 +218,73 @@ export function OBSController() {
       const ws = new WebSocket(url.toString())
       workerRef.current = ws
 
-      ws.onopen = () => ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
+      ws.onopen = () => {
+        setIsRemoteConnected(true)
+        setConnected(true)
+        setConnectionMode("remote")
+        setIsConnecting(false)
+        setRemoteWaitingForAgent(true)
+        ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
+      }
 
       ws.onmessage = (event) => {
-          console.log("RAW DATA RECEIVED:", event.data)
+        console.log("RAW DATA RECEIVED:", event.data)
         try {
-          const data = JSON.parse(event.data as string)
+          const raw = event.data
+          const data = JSON.parse(raw as string)
 
           if (data.type === "waiting") {
             setRemoteWaitingForAgent(true)
-            setIsConnecting(false)
             startRemoteTimeout()
           } else if (data.type === "peer_connected") {
             setRemoteWaitingForAgent(false)
-            setIsRemoteConnected(true)
-            setConnected(true)
-            setConnectionMode("remote")
-            setIsConnecting(false)
+            showToast(strings.toasts.connected, "success")
+          } else if (data.type === "obs-data" || data.type === "obs_data") {
+            console.log("OBS DATA RECEIVED:", JSON.stringify(data, null, 2))
+            
+            const obsPayload = data.data
+            if (!obsPayload || typeof obsPayload !== "object") {
+              console.log("Waiting for OBS data...")
+              return
+            }
+            
+            setObsDataError(null)
+            const scenes = Array.isArray(obsPayload.scenes) ? obsPayload.scenes : []
+            const inputs = Array.isArray(obsPayload.inputs) ? obsPayload.inputs : []
+            const currentScene = obsPayload.currentScene || ""
+            
+            setObsData((prev) => ({ 
+              ...prev, 
+              scenes, 
+              inputs, 
+              allSources: [...scenes.map((s: { sceneName: string }) => s.sceneName), ...inputs.map((i: { inputName: string }) => i.inputName)]
+            }))
+            
+            if (scenes.length > 0 || inputs.length > 0) {
+              setRemoteWaitingForAgent(false)
+              setHasOBSData(true)
+            }
+            
+            setDeck((prev) => prev.map((btn) => {
+              if (btn.type === "Mute") {
+                if (btn.target === "Desktop Audio" || btn.target === "Audio del escritorio") {
+                  const found = inputs.find((i: { inputName: string }) => 
+                    i && i.inputName && (i.inputName.toLowerCase().includes("desktop") || i.inputName.toLowerCase().includes("audio"))
+                  )
+                  if (found) return { ...btn, target: found.inputName }
+                }
+                if (btn.target === "Mic/Aux" || btn.target === "Mic") {
+                  const found = inputs.find((i: { inputName: string }) => 
+                    i && i.inputName && (i.inputName.toLowerCase().includes("mic") || i.inputName.toLowerCase().includes("aux"))
+                  )
+                  if (found) return { ...btn, target: found.inputName }
+                }
+              }
+              return btn
+            }))
+            
             setSettingsOpen(false)
             setModalOpen(false)
-            showToast(strings.toasts.connected, "success")
-          } else if (data.type === "obs_data") {
-            // Validate structure before processing
-            if (!data || typeof data !== "object") {
-              setObsDataError("Error: Formato de datos de OBS no reconocido (datos inválidos)")
-              return
-            }
-            if (!Array.isArray(data.scenes) || !Array.isArray(data.inputs)) {
-              setObsDataError("Error: Formato de datos de OBS no reconocido (estructura inválida)")
-              return
-            }
-            try {
-              setObsDataError(null)
-              const scenes = data.scenes || []
-              const inputs = data.inputs || []
-              
-              setObsData((prev) => ({ ...prev, scenes, inputs }))
-              
-              setDeck((prev) => prev.map((btn) => {
-                if (btn.type === "Mute") {
-                  if (btn.target === "Desktop Audio" || btn.target === "Audio del escritorio") {
-                    const found = inputs.find((i: string) => 
-                      i && (i.toLowerCase().includes("desktop") || i.toLowerCase().includes("audio"))
-                    )
-                    if (found) return { ...btn, target: found }
-                  }
-                  if (btn.target === "Mic/Aux" || btn.target === "Mic") {
-                    const found = inputs.find((i: string) => 
-                      i && (i.toLowerCase().includes("mic") || i.toLowerCase().includes("aux"))
-                    )
-                    if (found) return { ...btn, target: found }
-                  }
-                }
-                return btn
-              }))
-              setSettingsOpen(false)
-              setModalOpen(false)
-            } catch (err) {
-              console.error("Error processing OBS data:", err)
-            }
           } else if (data.type === "obs_status") {
             setObsData((prev) => ({ ...prev, rec: data.rec, str: data.str }))
             if (data.muteStates && typeof data.muteStates === "object") {
@@ -290,7 +298,9 @@ export function OBSController() {
             showToast(data.message || strings.toasts.connectionError, "error")
             setIsConnecting(false)
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error("WebSocket message error:", e)
+        }
       }
 
       ws.onerror = () => {
