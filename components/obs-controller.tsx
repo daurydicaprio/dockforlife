@@ -215,6 +215,11 @@ function getInitialPairingCode(): string {
   const [filters, setFilters] = useState<string[]>([])
   const [wsUrl, setWsUrl] = useState("ws://127.0.0.1:4455")
   const [wsPassword, setWsPassword] = useState("")
+  const [workerUrl, setWorkerUrl] = useState(() => {
+    if (typeof window === "undefined") return getWorkerUrl()
+    const saved = window.localStorage.getItem("dfl_worker_url")
+    return saved || getWorkerUrl()
+  })
   const [joinCode, setJoinCode] = useState(getInitialPairingCode)
   const [storedPairingCode, setStoredPairingCode] = useState(getInitialPairingCode)
   const [showControlPanel, setShowControlPanel] = useState(() => {
@@ -467,7 +472,6 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   }, [])
 
   const connectToWorker = useCallback(async () => {
-    const workerUrl = getWorkerUrl()
     const code = joinCode.trim().toUpperCase()
 
     if (code.length < 4) {
@@ -818,6 +822,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
       localStorage.setItem("dfl_ws_url", wsUrl)
       localStorage.setItem("dfl_ws_pass", wsPassword)
+      localStorage.setItem("dfl_worker_url", workerUrl)
     } catch {
       setConnected(false)
       setConnectionMode("none")
@@ -1560,6 +1565,22 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                 <Label htmlFor="join-code">{strings.settings.joinCode}</Label>
                 <Input id="join-code" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder={strings.settings.joinCodePlaceholder} maxLength={12} className={cn("font-mono tracking-widest uppercase rounded-xl", isDark ? "bg-zinc-900 border-white/10" : "bg-gray-50 border-gray-200")} />
               </div>
+              
+              {/* Custom Worker URL Override */}
+              <div className="space-y-2">
+                <Label htmlFor="worker-url">{strings.settings.workerUrl}</Label>
+                <Input 
+                  id="worker-url" 
+                  value={workerUrl} 
+                  onChange={(e) => setWorkerUrl(e.target.value)} 
+                  placeholder={strings.settings.workerUrlPlaceholder}
+                  className={cn("rounded-xl font-mono text-xs", isDark ? "bg-zinc-900 border-white/10" : "bg-gray-50 border-gray-200")} 
+                />
+                <p className={cn("text-[10px]", isDark ? "text-zinc-500" : "text-gray-400")}>
+                  {strings.settings.workerUrlHint}
+                </p>
+              </div>
+              
               <div className="flex gap-2">
                 <Button className="flex-1 rounded-xl" onClick={() => { disconnectWorker(); setIsRemoteMode(false); connectOBS() }} disabled={isConnecting && !isRemoteMode}>{isConnecting && !isRemoteMode ? strings.settings.connecting : strings.settings.local}</Button>
                 <Button variant={isRemoteMode ? "default" : "outline"} className="flex-1 rounded-xl" onClick={() => { disconnectWorker(); setIsRemoteMode(true); connectToWorker() }} disabled={isConnecting && isRemoteMode}>{isConnecting && isRemoteMode ? strings.settings.connecting : strings.settings.remote}</Button>
@@ -1641,10 +1662,41 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                     )}
                   </button>
                 </div>
-                <p className={cn("text-[10px] mt-3 text-center", isDark ? "text-zinc-500" : "text-gray-400")}>
-                  {RELEASE_VERSION} • ~7MB • {strings.agent.note}
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium", isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-600")}>
+                    Version 0.001 Beta
+                  </span>
+                </div>
+                <p className={cn("text-[10px] mt-2 text-center", isDark ? "text-zinc-500" : "text-gray-400")}>
+                  ~7MB • {strings.agent.note}
                 </p>
               </div>
+
+              {/* Disconnect Button for Remote Mode */}
+              {isRemoteConnected && (
+                <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      disconnectWorker()
+                      setIsRemoteMode(false)
+                      setConnected(false)
+                      showToast(strings.toasts.disconnected, "success")
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
+                      isDark 
+                        ? "bg-red-500/10 border-red-500/20 hover:bg-red-500/20" 
+                        : "bg-red-50 border-red-200 hover:bg-red-100"
+                    )}
+                  >
+                    <WifiOff className={cn("h-4 w-4", isDark ? "text-red-400" : "text-red-600")} />
+                    <span className={cn("text-sm font-medium", isDark ? "text-red-400" : "text-red-600")}>
+                      Disconnect
+                    </span>
+                  </Button>
+                </div>
+              )}
 
               {/* Clear Connection */}
               {storedPairingCode && (

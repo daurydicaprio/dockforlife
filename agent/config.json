@@ -1,5 +1,5 @@
 {
-  "WORKER_URL": "wss://remote.daurydicaprio.com/ws",
+  "WORKER_URL": "wss://your-worker.your-subdomain.workers.dev/ws",
   "OBS_PORT": 4455,
   "OBS_PASSWORD": ""
 }
