@@ -90,12 +90,12 @@ const COLOR_PRESETS = [
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
-// Master controls are always persistent at the top
+// Master controls are always persistent at the top with distinct colors
 const MASTER_CONTROLS: DeckButton[] = [
-  { id: "master-mic", label: "MIC", type: "Mute", target: "Mic/Aux", color: "#18181b", colorActive: "#3b82f6" },
-  { id: "master-desktop", label: "DESKTOP", type: "Mute", target: "Desktop Audio", color: "#18181b", colorActive: "#3b82f6" },
-  { id: "master-rec", label: "REC", type: "Record", color: "#18181b", colorActive: "#ef4444" },
-  { id: "master-stream", label: "STREAM", type: "Stream", color: "#18181b", colorActive: "#22c55e" },
+  { id: "master-mic", label: "MIC", type: "Mute", target: "Mic/Aux", color: "#7c2d12", colorActive: "#f97316" },      // Orange theme
+  { id: "master-desktop", label: "DESKTOP", type: "Mute", target: "Desktop Audio", color: "#713f12", colorActive: "#eab308" }, // Amber theme
+  { id: "master-rec", label: "REC", type: "Record", color: "#450a0a", colorActive: "#dc2626" },     // Red theme
+  { id: "master-stream", label: "STREAM", type: "Stream", color: "#0c4a6e", colorActive: "#0ea5e9" }, // Blue theme
 ]
 
 const DEFAULT_DECK: DeckButton[] = [...MASTER_CONTROLS]
@@ -372,7 +372,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     setRemoteWaitingForAgent(false)
   }, [])
 
-  // Factory Reset - clears all localStorage and resets app state
+  // Factory Reset - clears all localStorage and reloads the page
   const handleFactoryReset = useCallback(() => {
     if (typeof window === "undefined") return
 
@@ -390,18 +390,12 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     window.localStorage.removeItem("dfl_ws_pass")
     window.localStorage.removeItem("dfl_lang")
 
-    // Reset all state
-    setDeck([...MASTER_CONTROLS])
-    setStoredPairingCode("")
-    setJoinCode("")
-    setConnected(false)
-    setIsRemoteConnected(false)
-    setIsRemoteMode(false)
-    setConnectionMode("none")
-    setShowControlPanel(false)
-    setIsClientMode(false)
+    showToast("Factory reset completed. Reloading...", "success")
 
-    showToast("Factory reset completed", "success")
+    // Reload the page after a short delay to ensure the toast is shown
+    setTimeout(() => {
+      window.location.reload()
+    }, 1000)
   }, [disconnectWorker, showToast])
 
   const connectToWorker = useCallback(async () => {
@@ -1146,7 +1140,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
           {/* Brand Legend */}
           <div className="text-center">
             <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-gray-500")}>
-              Hecho con <span className="text-pink-500">♥</span> por <span className={cn("font-medium", isDark ? "text-zinc-300" : "text-gray-700")}>Daury DiCaprio</span>
+              Made with <span className="text-pink-500">♥</span> by <span className={cn("font-medium", isDark ? "text-zinc-300" : "text-gray-700")}>Daury DiCaprio</span>
             </p>
             <p className={cn("text-[10px] mt-0.5", isDark ? "text-zinc-600" : "text-gray-400")}>#verygoodforlife</p>
           </div>
