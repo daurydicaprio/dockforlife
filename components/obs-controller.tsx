@@ -960,15 +960,16 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                       isDragOver && "scale-105 z-10"
                     )}
                   >
-                    <button 
+                    <button
                       className={cn(
                         "w-full min-h-[160px] sm:min-h-[180px] rounded-2xl flex flex-col items-center justify-center gap-4 transition-all duration-150 active:scale-[0.97] relative overflow-hidden touch-manipulation",
-                        "border"
+                        "border",
+                        isActive && "border-4 border-black shadow-lg"
                       )}
-                      style={{ 
+                      style={{
                         backgroundColor: bgColor,
                         color: textColor,
-                        borderColor: isActive || isMuted ? "transparent" : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)")
+                        borderColor: isActive ? "#000000" : (isMuted ? btn.colorActive || "#3b82f6" : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"))
                       }}
                       onClick={() => handleButtonClick(btn, i)}
                       onContextMenu={(e) => { e.preventDefault(); openModal(i) }}

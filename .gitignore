@@ -45,6 +45,15 @@ proxy/config.json
 proxy/config.local.json
 dockforlife-agent
 dockforlife.config.json
+config.json
+
+# Agent skills directories
+.agent/
+.agents/
+
+# Lockfiles (project uses pnpm)
+package-lock.json
+agent/package-lock.json
 
 # Planning
 PLAN.md
