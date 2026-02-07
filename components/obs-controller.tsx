@@ -90,12 +90,34 @@ const COLOR_PRESETS = [
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
-const DEFAULT_DECK: DeckButton[] = [
-  { id: generateId(), label: "MIC", type: "Mute", target: "Mic/Aux", color: "#18181b", colorActive: "#3b82f6" },
-  { id: generateId(), label: "DESKTOP", type: "Mute", target: "Desktop Audio", color: "#18181b", colorActive: "#3b82f6" },
-  { id: generateId(), label: "REC", type: "Record", color: "#18181b", colorActive: "#ef4444" },
-  { id: generateId(), label: "STREAM", type: "Stream", color: "#18181b", colorActive: "#22c55e" },
+// Master controls are always persistent at the top
+const MASTER_CONTROLS: DeckButton[] = [
+  { id: "master-mic", label: "MIC", type: "Mute", target: "Mic/Aux", color: "#18181b", colorActive: "#3b82f6" },
+  { id: "master-desktop", label: "DESKTOP", type: "Mute", target: "Desktop Audio", color: "#18181b", colorActive: "#3b82f6" },
+  { id: "master-rec", label: "REC", type: "Record", color: "#18181b", colorActive: "#ef4444" },
+  { id: "master-stream", label: "STREAM", type: "Stream", color: "#18181b", colorActive: "#22c55e" },
 ]
+
+const DEFAULT_DECK: DeckButton[] = [...MASTER_CONTROLS]
+
+const DECK_STORAGE_KEY = "dfl_deck"
+const PAIRING_CODE_KEY = "dfl_pairing_code"
+
+function getInitialDeck(): DeckButton[] {
+  if (typeof window === "undefined") return [...MASTER_CONTROLS]
+  try {
+    const saved = window.localStorage.getItem(DECK_STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Ensure master controls are always present at the top
+      const userButtons = parsed.filter((btn: DeckButton) => !btn.id.startsWith("master-"))
+      return [...MASTER_CONTROLS, ...userButtons]
+    }
+  } catch {
+    console.error("Failed to load deck from localStorage")
+  }
+  return [...MASTER_CONTROLS]
+}
 
 function getIcon(type: ButtonType) {
   const icons: Record<ButtonType, React.ReactNode> = {
@@ -125,7 +147,7 @@ function Logo({ className }: { className?: string }) {
 
 function getInitialPairingCode(): string {
     if (typeof window === "undefined") return ""
-    return window.localStorage.getItem("dfl_pairing_code") || ""
+    return window.localStorage.getItem(PAIRING_CODE_KEY) || ""
   }
 
   function getInitialLang(): Language {
@@ -149,7 +171,7 @@ function getInitialPairingCode(): string {
   export function OBSController() {
   const obsRef = useRef<OBSWebSocket | null>(null)
   const workerRef = useRef<WebSocket | null>(null)
-  const [deck, setDeck] = useState<DeckButton[]>([])
+  const [deck, setDeck] = useState<DeckButton[]>(getInitialDeck)
   const [connected, setConnected] = useState(false)
   const [lang, setLang] = useState<Language>(getInitialLang)
   const [strings, setStrings] = useState<LocaleStrings>(() => getLocaleStrings(getInitialLang()))
@@ -181,6 +203,13 @@ function getInitialPairingCode(): string {
   const [wsPassword, setWsPassword] = useState("")
   const [joinCode, setJoinCode] = useState(getInitialPairingCode)
   const [storedPairingCode, setStoredPairingCode] = useState(getInitialPairingCode)
+  const [showControlPanel, setShowControlPanel] = useState(() => {
+    if (typeof window === "undefined") return false
+    // Show control panel immediately if we have a pairing code or saved deck
+    const hasPairingCode = !!window.localStorage.getItem(PAIRING_CODE_KEY)
+    const hasDeck = !!window.localStorage.getItem(DECK_STORAGE_KEY)
+    return hasPairingCode || hasDeck
+  })
   const [isClient, setIsClient] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -210,18 +239,39 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRemoteModeRef = useRef(false)
   const connectionModeRef = useRef<"local" | "remote" | "none" | "dual" | "bridge">("none")
 
+  // Persist deck changes to localStorage
+  useEffect(() => {
+    if (!isClient || deck.length === 0) return
+    try {
+      window.localStorage.setItem(DECK_STORAGE_KEY, JSON.stringify(deck))
+    } catch {
+      console.error("Failed to save deck to localStorage")
+    }
+  }, [deck, isClient])
+
+  // Auto-connect on mount if pairing code exists
   useEffect(() => {
     if (typeof window === "undefined") return
     setIsClient(true)
-    if (joinCode && !connected && !isConnecting) {
+
+    const savedCode = window.localStorage.getItem(PAIRING_CODE_KEY)
+    if (savedCode && !connected && !isConnecting) {
+      // Set showControlPanel to true immediately to prevent pairing screen flash
+      setShowControlPanel(true)
+      setJoinCode(savedCode)
+      setStoredPairingCode(savedCode)
       setIsRemoteMode(true)
-      connectToWorker()
+      setIsClientMode(true)
+      // Small delay to ensure state is set before connecting
+      setTimeout(() => {
+        connectToWorker()
+      }, 100)
     }
   }, [])
 
   useEffect(() => {
     if (!isClient || !joinCode) return
-    window.localStorage.setItem("dfl_pairing_code", joinCode)
+    window.localStorage.setItem(PAIRING_CODE_KEY, joinCode)
   }, [joinCode, isClient])
 
   const RELEASE_VERSION = "v0.1.0-alpha"
@@ -289,7 +339,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   }, [])
 
   const confirmClearConnection = useCallback(() => {
-    window.localStorage.removeItem("dfl_pairing_code")
+    window.localStorage.removeItem(PAIRING_CODE_KEY)
     setStoredPairingCode("")
     setJoinCode("")
     setConnectionMode("none")
@@ -318,6 +368,38 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     setIsRemoteConnected(false)
     setRemoteWaitingForAgent(false)
   }, [])
+
+  // Factory Reset - clears all localStorage and resets app state
+  const handleFactoryReset = useCallback(() => {
+    if (typeof window === "undefined") return
+
+    // Disconnect everything first
+    disconnectWorker()
+    if (obsRef.current) {
+      try { obsRef.current.disconnect() } catch {}
+      obsRef.current = null
+    }
+
+    // Clear all localStorage
+    window.localStorage.removeItem(PAIRING_CODE_KEY)
+    window.localStorage.removeItem(DECK_STORAGE_KEY)
+    window.localStorage.removeItem("dfl_ws_url")
+    window.localStorage.removeItem("dfl_ws_pass")
+    window.localStorage.removeItem("dfl_lang")
+
+    // Reset all state
+    setDeck([...MASTER_CONTROLS])
+    setStoredPairingCode("")
+    setJoinCode("")
+    setConnected(false)
+    setIsRemoteConnected(false)
+    setIsRemoteMode(false)
+    setConnectionMode("none")
+    setShowControlPanel(false)
+    setIsClientMode(false)
+
+    showToast("Factory reset completed", "success")
+  }, [disconnectWorker, showToast])
 
   const connectToWorker = useCallback(async () => {
     const workerUrl = getWorkerUrl()
@@ -1331,11 +1413,11 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                     className={cn(
                       "flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
                       lang === "en"
-                        ? isDark 
-                          ? "bg-blue-500/20 border-blue-500/50" 
+                        ? isDark
+                          ? "bg-blue-500/20 border-blue-500/50"
                           : "bg-blue-50 border-blue-300"
-                        : isDark 
-                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                        : isDark
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800"
                           : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                     )}
                   >
@@ -1348,11 +1430,11 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                     className={cn(
                       "flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
                       lang === "es"
-                        ? isDark 
-                          ? "bg-blue-500/20 border-blue-500/50" 
+                        ? isDark
+                          ? "bg-blue-500/20 border-blue-500/50"
                           : "bg-blue-50 border-blue-300"
-                        : isDark 
-                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800" 
+                        : isDark
+                          ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800"
                           : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                     )}
                   >
@@ -1361,6 +1443,33 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                     </span>
                   </button>
                 </div>
+              </div>
+
+              {/* Factory Reset */}
+              <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
+                <Label className="flex items-center gap-2 text-sm font-medium mb-3 text-red-500">
+                  <RefreshCw className="h-4 w-4" />
+                  Danger Zone
+                </Label>
+                <button
+                  onClick={() => {
+                    if (confirm("⚠️ WARNING: This will delete ALL your settings, buttons, and connection data.\n\nThis action cannot be undone.\n\nAre you sure you want to continue?")) {
+                      handleFactoryReset()
+                    }
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
+                    isDark
+                      ? "bg-red-500/10 border-red-500/30 hover:bg-red-500/20 text-red-400"
+                      : "bg-red-50 border-red-200 hover:bg-red-100 text-red-600"
+                  )}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="text-sm font-medium">Factory Reset</span>
+                </button>
+                <p className={cn("text-[10px] mt-2 text-center", isDark ? "text-zinc-500" : "text-gray-400")}>
+                  Clears all saved data and resets to defaults
+                </p>
               </div>
             </div>
           )}
