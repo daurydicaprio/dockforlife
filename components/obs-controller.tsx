@@ -67,13 +67,32 @@ interface DeckButton {
   id: string
 }
 
-interface OBSData {
+// Centralized OBS State Store - Single Source of Truth
+interface OBSState {
   scenes: { sceneName: string }[]
   inputs: { inputName: string }[]
   allSources: string[]
   rec: boolean
   str: boolean
+  currentScene: string
+  muteStates: Record<string, boolean>
+  visibilityStates: Record<string, boolean>
+  filterStates: Record<string, boolean>
+  lastUpdate: number
 }
+
+const createInitialOBSState = (): OBSState => ({
+  scenes: [],
+  inputs: [],
+  allSources: [],
+  rec: false,
+  str: false,
+  currentScene: "",
+  muteStates: {},
+  visibilityStates: {},
+  filterStates: {},
+  lastUpdate: Date.now(),
+})
 
 const COLOR_PRESETS = [
   { value: "#18181b", active: "#3b82f6", label: "Dark" },
@@ -175,13 +194,7 @@ function getInitialPairingCode(): string {
   const [connected, setConnected] = useState(false)
   const [lang, setLang] = useState<Language>(getInitialLang)
   const [strings, setStrings] = useState<LocaleStrings>(() => getLocaleStrings(getInitialLang()))
-  const [obsData, setObsData] = useState<OBSData>({
-    scenes: [],
-    inputs: [],
-    allSources: [],
-    rec: false,
-    str: false,
-  })
+  const [obsState, setObsState] = useState<OBSState>(createInitialOBSState)
   const [modalOpen, setModalOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -213,10 +226,7 @@ function getInitialPairingCode(): string {
   const [isClient, setIsClient] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [muteStates, setMuteStates] = useState<Record<string, boolean>>({})
-  const [currentScene, setCurrentScene] = useState<string>("")
-  const [visibilityStates, setVisibilityStates] = useState<Record<string, boolean>>({})
-  const [filterStates, setFilterStates] = useState<Record<string, boolean>>({})
+
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === "undefined") return true
     const savedTheme = window.localStorage.getItem("dfl_theme")
@@ -405,6 +415,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     window.localStorage.removeItem("dfl_ws_url")
     window.localStorage.removeItem("dfl_ws_pass")
     window.localStorage.removeItem("dfl_lang")
+    window.localStorage.removeItem("dfl_theme")
 
     showToast("Factory reset completed. Reloading...", "success")
 
@@ -513,11 +524,12 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             
             console.log("Processing scenes:", scenes.length, "inputs:", inputs.length)
             
-            setObsData((prev) => ({ 
+            setObsState((prev: OBSState) => ({ 
               ...prev, 
               scenes, 
-              inputs, 
-              allSources: [...scenes.map((s: { sceneName: string }) => s.sceneName), ...inputs.map((i: { inputName: string }) => i.inputName)]
+              inputs,
+              allSources: [...scenes.map((s: { sceneName: string }) => s.sceneName), ...inputs.map((i: { inputName: string }) => i.inputName)],
+              lastUpdate: Date.now()
             }))
             
             if (scenes.length > 0 || inputs.length > 0) {
@@ -546,30 +558,45 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             setSettingsOpen(false)
             setModalOpen(false)
           } else if (data.type === "obs_status") {
-            setObsData((prev) => ({ ...prev, rec: data.rec, str: data.str }))
-            if (data.muteStates && typeof data.muteStates === "object") {
-              const newMuteStates: Record<string, boolean> = {}
-              for (const [key, value] of Object.entries(data.muteStates)) {
-                if (typeof value === "boolean") newMuteStates[key] = value
-              }
-              setMuteStates(newMuteStates)
-            }
-            if (data.currentScene && typeof data.currentScene === "string") {
-              setCurrentScene(data.currentScene)
-            }
-            if (data.visibilityStates && typeof data.visibilityStates === "object") {
-              const newVisibilityStates: Record<string, boolean> = {}
-              for (const [key, value] of Object.entries(data.visibilityStates)) {
-                if (typeof value === "boolean") newVisibilityStates[key] = value
-              }
-              setVisibilityStates(newVisibilityStates)
-            }
-            if (data.filterStates && typeof data.filterStates === "object") {
-              const newFilterStates: Record<string, boolean> = {}
-              for (const [key, value] of Object.entries(data.filterStates)) {
-                if (typeof value === "boolean") newFilterStates[key] = value
-              }
-              setFilterStates(newFilterStates)
+            setObsState((prev: OBSState) => ({ 
+              ...prev, 
+              rec: data.rec, 
+              str: data.str,
+              muteStates: data.muteStates && typeof data.muteStates === "object" ? data.muteStates : prev.muteStates,
+              currentScene: data.currentScene && typeof data.currentScene === "string" ? data.currentScene : prev.currentScene,
+              visibilityStates: data.visibilityStates && typeof data.visibilityStates === "object" ? data.visibilityStates : prev.visibilityStates,
+              filterStates: data.filterStates && typeof data.filterStates === "object" ? data.filterStates : prev.filterStates,
+              lastUpdate: Date.now()
+            }))
+          } else if (data.type === "obs_event") {
+            // Handle real-time OBS events from agent
+            const eventType = data.eventType
+            const eventData = data.eventData
+            
+            if (eventType === "InputMuteStateChanged" && eventData) {
+              setObsState((prev: OBSState) => ({
+                ...prev,
+                muteStates: { ...prev.muteStates, [eventData.inputName]: eventData.inputMuted },
+                lastUpdate: Date.now()
+              }))
+            } else if (eventType === "RecordStateChanged" && eventData) {
+              setObsState((prev: OBSState) => ({
+                ...prev,
+                rec: eventData.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED",
+                lastUpdate: Date.now()
+              }))
+            } else if (eventType === "StreamStateChanged" && eventData) {
+              setObsState((prev: OBSState) => ({
+                ...prev,
+                str: eventData.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED",
+                lastUpdate: Date.now()
+              }))
+            } else if (eventType === "CurrentProgramSceneChanged" && eventData) {
+              setObsState((prev: OBSState) => ({
+                ...prev,
+                currentScene: eventData.sceneName,
+                lastUpdate: Date.now()
+              }))
             }
           } else if (data.type === "error") {
             showToast(data.message || strings.toasts.connectionError, "error")
@@ -639,15 +666,6 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
       // Get current scene
       const { currentProgramSceneName } = await obs.call("GetCurrentProgramScene")
-      setCurrentScene(currentProgramSceneName as string)
-
-      setObsData({
-        scenes: sceneList.scenes as { sceneName: string }[],
-        inputs: inputList.inputs as { inputName: string }[],
-        allSources: Array.from(sourceSet).sort(),
-        rec: false,
-        str: false,
-      })
 
       // INITIAL SYNC: Fetch all input mute states
       const initialMuteStates: Record<string, boolean> = {}
@@ -659,61 +677,93 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
           // Skip inputs that don't support mute
         }
       }
-      setMuteStates(initialMuteStates)
 
       // INITIAL SYNC: Fetch recording and streaming status
+      let recStatus = false
+      let strStatus = false
       try {
-        const [recStatus, streamStatus] = await Promise.all([
+        const [recResult, streamResult] = await Promise.all([
           obs.call("GetRecordStatus"),
           obs.call("GetStreamStatus")
         ])
-        setObsData((prev) => ({ 
-          ...prev, 
-          rec: recStatus.outputActive as boolean, 
-          str: streamStatus.outputActive as boolean 
-        }))
+        recStatus = recResult.outputActive as boolean
+        strStatus = streamResult.outputActive as boolean
       } catch {
         console.error("Failed to get initial record/stream status")
       }
 
+      // Set centralized state with all initial data
+      setObsState({
+        scenes: sceneList.scenes as { sceneName: string }[],
+        inputs: inputList.inputs as { inputName: string }[],
+        allSources: Array.from(sourceSet).sort(),
+        rec: recStatus,
+        str: strStatus,
+        currentScene: currentProgramSceneName as string,
+        muteStates: initialMuteStates,
+        visibilityStates: {},
+        filterStates: {},
+        lastUpdate: Date.now()
+      })
+
       const obsAdapter = new OBSWebSocketAdapter(obs)
       setAdapter(obsAdapter)
 
+      // Set up OBS event listeners to update centralized state
       ;(obs as any).on("CurrentProgramSceneChanged", (data: unknown) => {
         const d = data as { sceneName: string }
         console.log("Scene changed:", d.sceneName)
-        setCurrentScene(d.sceneName)
+        setObsState((prev: OBSState) => ({ ...prev, currentScene: d.sceneName, lastUpdate: Date.now() }))
       })
 
       ;(obs as any).on("SourceMuteStateChanged", (data: unknown) => {
         const d = data as { inputName: string; inputMuted: boolean }
         console.log("Mute state changed:", d.inputName, d.inputMuted)
-        setMuteStates((prev) => ({ ...prev, [d.inputName]: d.inputMuted }))
+        setObsState((prev: OBSState) => ({ 
+          ...prev, 
+          muteStates: { ...prev.muteStates, [d.inputName]: d.inputMuted },
+          lastUpdate: Date.now()
+        }))
       })
 
       ;(obs as any).on("RecordingStateChanged", (data: unknown) => {
         const d = data as { outputState: string }
         console.log("Recording state changed:", d.outputState)
-        setObsData((prev) => ({ ...prev, rec: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED" }))
+        setObsState((prev: OBSState) => ({ 
+          ...prev, 
+          rec: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED",
+          lastUpdate: Date.now()
+        }))
       })
 
-      ;(obs as any).on("StreamStatusChanged", (data: unknown) => {
+      ;(obs as any).on("StreamStateChanged", (data: unknown) => {
         const d = data as { outputState: string }
-        console.log("Stream status changed:", d.outputState)
-        setObsData((prev) => ({ ...prev, str: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED" }))
+        console.log("Stream state changed:", d.outputState)
+        setObsState((prev: OBSState) => ({ 
+          ...prev, 
+          str: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED",
+          lastUpdate: Date.now()
+        }))
       })
 
       ;(obs as any).on("SceneItemEnableStateChanged", (data: unknown) => {
         const d = data as { sceneName: string; sceneItemId: number; sceneItemEnabled: boolean }
         console.log("Visibility changed:", d.sceneName, d.sceneItemId, d.sceneItemEnabled)
-        // We need to fetch the source name from the scene item
-        setVisibilityStates((prev) => ({ ...prev, [`${d.sceneName}-${d.sceneItemId}`]: d.sceneItemEnabled }))
+        setObsState((prev: OBSState) => ({ 
+          ...prev, 
+          visibilityStates: { ...prev.visibilityStates, [`${d.sceneName}-${d.sceneItemId}`]: d.sceneItemEnabled },
+          lastUpdate: Date.now()
+        }))
       })
 
       ;(obs as any).on("SourceFilterEnableStateChanged", (data: unknown) => {
         const d = data as { sourceName: string; filterName: string; filterEnabled: boolean }
         console.log("Filter state changed:", d.sourceName, d.filterName, d.filterEnabled)
-        setFilterStates((prev) => ({ ...prev, [`${d.sourceName}-${d.filterName}`]: d.filterEnabled }))
+        setObsState((prev: OBSState) => ({ 
+          ...prev, 
+          filterStates: { ...prev.filterStates, [`${d.sourceName}-${d.filterName}`]: d.filterEnabled },
+          lastUpdate: Date.now()
+        }))
       })
 
       localStorage.setItem("dfl_ws_url", wsUrl)
@@ -754,16 +804,14 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
           // Sync recording and streaming status
           const [recStatus, streamStatus] = await Promise.all([obs.call("GetRecordStatus"), obs.call("GetStreamStatus")])
-          setObsData((prev) => ({ ...prev, rec: recStatus.outputActive, str: streamStatus.outputActive }))
 
           // Sync current scene
           const { currentProgramSceneName } = await obs.call("GetCurrentProgramScene")
-          setCurrentScene(currentProgramSceneName as string)
 
           // Sync all button states
-          const newMuteStates: Record<string, boolean> = {}
-          const newVisibilityStates: Record<string, boolean> = {}
-          const newFilterStates: Record<string, boolean> = {}
+          const newMuteStates: Record<string, boolean> = { ...obsState.muteStates }
+          const newVisibilityStates: Record<string, boolean> = { ...obsState.visibilityStates }
+          const newFilterStates: Record<string, boolean> = { ...obsState.filterStates }
 
           for (const btn of deck) {
             if (btn.type === "Mute" && btn.target) {
@@ -774,7 +822,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             } else if (btn.type === "Visibility" && btn.target) {
               try {
                 const { sceneItems } = await obs.call("GetSceneItemList", { sceneName: currentProgramSceneName as string })
-                const item = sceneItems.find((i: any) => i.sourceName === btn.target)
+                const item = (sceneItems as Array<{ sourceName: string; sceneItemId: number }>).find((i) => i.sourceName === btn.target)
                 if (item) {
                   const { sceneItemEnabled } = await obs.call("GetSceneItemEnabled", {
                     sceneName: currentProgramSceneName as string,
@@ -794,9 +842,17 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             }
           }
 
-          setMuteStates(newMuteStates)
-          setVisibilityStates(newVisibilityStates)
-          setFilterStates(newFilterStates)
+          // Update centralized state atomically
+          setObsState((prev: OBSState) => ({
+            ...prev,
+            rec: recStatus.outputActive as boolean,
+            str: streamStatus.outputActive as boolean,
+            currentScene: currentProgramSceneName as string,
+            muteStates: newMuteStates,
+            visibilityStates: newVisibilityStates,
+            filterStates: newFilterStates,
+            lastUpdate: Date.now()
+          }))
         } catch {}
       }
       interval = setInterval(syncStates, 1500)
@@ -819,7 +875,12 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
         }
         if (btn.type === "Mute" && btn.target) {
           const targetName = btn.target
-          setMuteStates((prev) => ({ ...prev, [targetName]: !Boolean(prev[targetName]) }))
+          // Optimistically update local state for immediate UI feedback
+          setObsState((prev: OBSState) => ({
+            ...prev,
+            muteStates: { ...prev.muteStates, [targetName]: !Boolean(prev.muteStates[targetName]) },
+            lastUpdate: Date.now()
+          }))
         }
         workerRef.current.send(JSON.stringify(command))
         return
@@ -1005,11 +1066,11 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const getTargetList = useMemo(() => {
     switch (formData.type) {
-      case "Scene": return (obsData?.scenes || []).map((s) => s.sceneName)
-      case "Mute": return (obsData?.inputs || []).map((i) => i.inputName)
-      default: return obsData?.allSources || []
+      case "Scene": return (obsState.scenes || []).map((s: { sceneName: string }) => s.sceneName)
+      case "Mute": return (obsState.inputs || []).map((i: { inputName: string }) => i.inputName)
+      default: return obsState.allSources || []
     }
-  }, [formData.type, obsData])
+  }, [formData.type, obsState])
 
   const needsTarget = !["Record", "Stream"].includes(formData.type)
 
@@ -1060,13 +1121,13 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             isDark ? "bg-slate-900/60 border-white/10 shadow-lg shadow-black/20" : "bg-white/80 border-gray-200 shadow-md shadow-gray-200/50")}>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
               {(deck || []).map((btn, i) => {
-                // Check active state for each button type
-                const isRecording = btn.type === "Record" && (obsData?.rec || false)
-                const isStreaming = btn.type === "Stream" && (obsData?.str || false)
-                const isMuted = Boolean(btn.type === "Mute" && btn.target && (muteStates || {})[btn.target])
-                const isActiveScene = btn.type === "Scene" && btn.target && currentScene === btn.target
-                const isVisible = Boolean(btn.type === "Visibility" && btn.target && (visibilityStates || {})[btn.target])
-                const isFilterEnabled = Boolean(btn.type === "Filter" && btn.target && btn.filter && (filterStates || {})[`${btn.target}-${btn.filter}`])
+                // Check active state for each button type from centralized state
+                const isRecording = btn.type === "Record" && obsState.rec
+                const isStreaming = btn.type === "Stream" && obsState.str
+                const isMuted = Boolean(btn.type === "Mute" && btn.target && obsState.muteStates[btn.target])
+                const isActiveScene = btn.type === "Scene" && btn.target && obsState.currentScene === btn.target
+                const isVisible = Boolean(btn.type === "Visibility" && btn.target && obsState.visibilityStates[btn.target])
+                const isFilterEnabled = Boolean(btn.type === "Filter" && btn.target && btn.filter && obsState.filterStates[`${btn.target}-${btn.filter}`])
 
                 // Button is active if it's in its active state
                 const isActive = isRecording || isStreaming || isActiveScene || isVisible || isFilterEnabled || (btn.type === "Mute" && isMuted)

@@ -208,7 +208,7 @@ This project is licensed under the **Sustainable Use License** - see [LICENSE](L
 - ❌ Cannot be used as a hosted/managed service
 - ❌ Cannot be sold or commercially redistributed
 
-For commercial licensing inquiries, contact: [contact@dockforlife.app](mailto:contact@dockforlife.app)
+For commercial licensing inquiries, contact: [hello@daurydicaprio.com](mailto:hello@daurydicaprio.com)
 
 ## Contributing
 
