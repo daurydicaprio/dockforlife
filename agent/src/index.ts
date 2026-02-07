@@ -11,7 +11,7 @@ interface Config {
 }
 
 let config: Config = {
-  WORKER_URL: 'wss://dockforlife-relay.blu-b1d.workers.dev/ws', // Default, should be overwritten
+  WORKER_URL: 'wss://your-worker.your-subdomain.workers.dev/ws', // Default, should be overwritten
   OBS_PORT: 4455,
   OBS_PASSWORD: ''
 };
