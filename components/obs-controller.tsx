@@ -1140,17 +1140,8 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                 const isDragging = draggedIdx === i
                 const isDragOver = dragOverIdx === i
 
-                // Determine background color
-                let bgColor = btn.color
-                if (isRecording) {
-                  bgColor = "#dc2626" // Red for recording
-                } else if (isStreaming) {
-                  bgColor = "#16a34a" // Green for streaming
-                } else if (isMuted) {
-                  bgColor = btn.colorActive || "#3b82f6" // Use active color when muted
-                } else if (isActiveScene || isVisible || isFilterEnabled) {
-                  bgColor = btn.colorActive || "#3b82f6" // Use active color for active scene/visible source/enabled filter
-                }
+                // Determine background color - ALWAYS use btn.color as base
+                const bgColor = btn.color || "#18181b"
 
                 // Determine text color based on background brightness
                 const getTextColor = (hexColor: string) => {
@@ -1183,7 +1174,7 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                       isDragOver && "scale-105 z-10"
                     )}
                   >
-                     <button
+                      <button
                         className={cn(
                           "w-full min-h-[160px] sm:min-h-[180px] rounded-2xl flex flex-col items-center justify-center gap-4 transition-all duration-150 active:scale-[0.97] relative overflow-hidden touch-manipulation",
                           isActive
@@ -1193,8 +1184,10 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                         style={{
                           backgroundColor: bgColor,
                           color: textColor,
-                          filter: isActive ? "brightness(1.3)" : "brightness(1.0)",
-                          border: isActive ? "4px solid black" : "2px solid transparent"
+                          opacity: isActive ? 1 : 0.85,
+                          filter: isActive ? "brightness(1.2)" : "brightness(1.0)",
+                          border: isActive ? "4px solid #ffffff" : "2px solid transparent",
+                          boxShadow: isActive ? "0 0 20px rgba(255,255,255,0.3)" : "none"
                         }}
                       onClick={() => handleButtonClick(btn, i)}
                       onContextMenu={(e) => { e.preventDefault(); openModal(i) }}
