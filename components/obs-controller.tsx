@@ -217,7 +217,13 @@ function getInitialPairingCode(): string {
   const [currentScene, setCurrentScene] = useState<string>("")
   const [visibilityStates, setVisibilityStates] = useState<Record<string, boolean>>({})
   const [filterStates, setFilterStates] = useState<Record<string, boolean>>({})
-  const [isDark, setIsDark] = useState(true)
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === "undefined") return true
+    const savedTheme = window.localStorage.getItem("dfl_theme")
+    if (savedTheme === "light") return false
+    if (savedTheme === "dark") return true
+    return true // Default to dark
+  })
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -251,6 +257,16 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
       console.error("Failed to save deck to localStorage")
     }
   }, [deck, isClient])
+
+  // Persist theme changes to localStorage
+  useEffect(() => {
+    if (!isClient) return
+    try {
+      window.localStorage.setItem("dfl_theme", isDark ? "dark" : "light")
+    } catch {
+      console.error("Failed to save theme to localStorage")
+    }
+  }, [isDark, isClient])
 
   // Auto-connect on mount if pairing code exists
   useEffect(() => {
@@ -588,6 +604,33 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
         rec: false,
         str: false,
       })
+
+      // INITIAL SYNC: Fetch all input mute states
+      const initialMuteStates: Record<string, boolean> = {}
+      for (const input of inputList.inputs) {
+        try {
+          const { inputMuted } = await obs.call("GetInputMute", { inputName: input.inputName as string })
+          initialMuteStates[input.inputName as string] = inputMuted
+        } catch {
+          // Skip inputs that don't support mute
+        }
+      }
+      setMuteStates(initialMuteStates)
+
+      // INITIAL SYNC: Fetch recording and streaming status
+      try {
+        const [recStatus, streamStatus] = await Promise.all([
+          obs.call("GetRecordStatus"),
+          obs.call("GetStreamStatus")
+        ])
+        setObsData((prev) => ({ 
+          ...prev, 
+          rec: recStatus.outputActive as boolean, 
+          str: streamStatus.outputActive as boolean 
+        }))
+      } catch {
+        console.error("Failed to get initial record/stream status")
+      }
 
       const obsAdapter = new OBSWebSocketAdapter(obs)
       setAdapter(obsAdapter)
@@ -1029,17 +1072,20 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                       isDragOver && "scale-105 z-10"
                     )}
                   >
-                    <button
-                      className={cn(
-                        "w-full min-h-[160px] sm:min-h-[180px] rounded-2xl flex flex-col items-center justify-center gap-4 transition-all duration-150 active:scale-[0.97] relative overflow-hidden touch-manipulation",
-                        "border",
-                        isActive && "border-4 border-black shadow-lg"
-                      )}
-                      style={{
-                        backgroundColor: bgColor,
-                        color: textColor,
-                        borderColor: isActive ? "#000000" : (isMuted ? btn.colorActive || "#3b82f6" : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"))
-                      }}
+                     <button
+                       className={cn(
+                         "w-full min-h-[160px] sm:min-h-[180px] rounded-2xl flex flex-col items-center justify-center gap-4 transition-all duration-150 active:scale-[0.97] relative overflow-hidden touch-manipulation",
+                         "border-2",
+                         isActive
+                           ? "border-black brightness-125 shadow-lg scale-[1.02]"
+                           : isDark
+                             ? "border-white/20 bg-zinc-800"
+                             : "border-gray-300 bg-gray-100"
+                       )}
+                       style={{
+                         backgroundColor: isActive ? bgColor : undefined,
+                         color: isActive ? textColor : undefined
+                       }}
                       onClick={() => handleButtonClick(btn, i)}
                       onContextMenu={(e) => { e.preventDefault(); openModal(i) }}
                       onTouchStart={(e) => handleTouchStart(i, e)} 
