@@ -87,6 +87,29 @@ async function findInputByName(inputList: any[], targetName: string): Promise<st
   return null;
 }
 
+function normalizeToAlias(inputName: string): string {
+  const nameLower = inputName.toLowerCase();
+  
+  if (nameLower.includes('desktop') || 
+      nameLower.includes('audio del escritorio') ||
+      nameLower.includes('speaker') ||
+      nameLower.includes('audio output') ||
+      nameLower.includes('output_capture')) {
+    return 'Desktop Audio';
+  }
+  
+  if (nameLower.includes('mic') || 
+      nameLower.includes('microphone') ||
+      nameLower.includes('micófono') ||
+      nameLower.includes('auxiliar') ||
+      nameLower.includes('aux') ||
+      nameLower.includes('input_capture')) {
+    return 'Mic/Aux';
+  }
+  
+  return inputName;
+}
+
 function setupOBSEventListeners() {
   if (!obs) return;
 
@@ -101,10 +124,11 @@ function setupOBSEventListeners() {
 
   obs.on('InputMuteStateChanged', (data: any) => {
     console.log('OBS Event: Mute changed for', data.inputName, data.inputMuted);
+    const alias = normalizeToAlias(String(data.inputName || ''));
     broadcastToWorker({
       type: 'obs_event',
       eventType: 'InputMuteStateChanged',
-      eventData: { inputName: data.inputName, inputMuted: data.inputMuted }
+      eventData: { inputName: alias, inputMuted: Boolean(data.inputMuted) }
     });
   });
 
@@ -188,7 +212,8 @@ async function sendFullSync() {
       try {
         const inputName = String(input.inputName || '');
         const { inputMuted } = await obs.call('GetInputMute', { inputName }) as any;
-        (muteStates as any)[inputName] = Boolean(inputMuted);
+        const alias = normalizeToAlias(inputName);
+        (muteStates as any)[alias] = Boolean(inputMuted);
       } catch {}
     }
 
