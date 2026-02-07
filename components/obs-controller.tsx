@@ -52,6 +52,7 @@ import {
   Copy,
   Trash2,
   RefreshCw,
+  Upload,
 } from "lucide-react"
 
 type ButtonType = "Mute" | "Visibility" | "Filter" | "Scene" | "Record" | "Stream"
@@ -1739,6 +1740,84 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                 <p className={cn("text-[10px] mt-2 text-center", isDark ? "text-zinc-500" : "text-gray-400")}>
                   Clears all saved data and resets to defaults
                 </p>
+              </div>
+
+              {/* Import/Export Config */}
+              <div className={cn("pt-4 border-t", isDark ? "border-white/10" : "border-gray-200")}>
+                <Label className="flex items-center gap-2 text-sm font-medium mb-3">
+                  <Download className="h-4 w-4" />
+                  Import / Export
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      const configData = {
+                        deck: deck.filter((btn: DeckButton) => !btn.id.startsWith("master-")),
+                        version: "1.0"
+                      }
+                      const blob = new Blob([JSON.stringify(configData, null, 2)], { type: "application/json" })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement("a")
+                      a.href = url
+                      a.download = `dockforlife-config-${new Date().toISOString().split("T")[0]}.json`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                      showToast("Configuration exported", "success")
+                    }}
+                    className={cn(
+                      "flex items-center justify-center gap-2 p-3 rounded-xl border transition-all",
+                      isDark
+                        ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800"
+                        : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className={cn("text-sm font-medium", isDark ? "text-zinc-300" : "text-gray-700")}>
+                      Export
+                    </span>
+                  </button>
+                  <input
+                    type="file"
+                    id="import-config"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        const reader = new FileReader()
+                        reader.onload = (event) => {
+                          try {
+                            const data = JSON.parse(event.target?.result as string)
+                            if (data.deck && Array.isArray(data.deck)) {
+                              const newDeck = [...MASTER_CONTROLS, ...data.deck]
+                              setDeck(newDeck)
+                              showToast("Configuration imported", "success")
+                            } else {
+                              showToast("Invalid config file", "error")
+                            }
+                          } catch {
+                            showToast("Failed to parse config file", "error")
+                          }
+                        }
+                        reader.readAsText(file)
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="import-config"
+                    className={cn(
+                      "flex items-center justify-center gap-2 p-3 rounded-xl border transition-all cursor-pointer",
+                      isDark
+                        ? "bg-zinc-800/50 border-white/10 hover:bg-zinc-800"
+                        : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    )}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className={cn("text-sm font-medium", isDark ? "text-zinc-300" : "text-gray-700")}>
+                      Import
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
           )}

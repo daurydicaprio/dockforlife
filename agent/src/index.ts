@@ -44,6 +44,49 @@ function broadcastToWorker(data: any) {
   }
 }
 
+async function findAudioInputByType(inputList: any[], type: string): Promise<string | null> {
+  const wasapiCapture = inputList.find((i: any) => 
+    i.inputKind === type || 
+    (i.inputName && i.inputName.toLowerCase().includes('audio')) ||
+    (i.inputName && i.inputName.toLowerCase().includes('speaker'))
+  );
+  return wasapiCapture ? String(wasapiCapture.inputName) : null;
+}
+
+async function findInputByName(inputList: any[], targetName: string): Promise<string | null> {
+  const targetLower = targetName.toLowerCase();
+  
+  const exactMatch = inputList.find((i: any) => 
+    i.inputName && i.inputName.toLowerCase() === targetLower
+  );
+  if (exactMatch) return String(exactMatch.inputName);
+  
+  const caseMatch = inputList.find((i: any) => 
+    i.inputName && i.inputName.toLowerCase().includes(targetLower)
+  );
+  if (caseMatch) return String(caseMatch.inputName);
+  
+  if (targetLower.includes('desktop') || targetLower.includes('audio del escritorio')) {
+    const wasapi = await findAudioInputByType(inputList, 'wasapi_output_capture');
+    if (wasapi) return wasapi;
+  }
+  
+  if (targetLower.includes('mic') || targetLower.includes('micófono') || targetLower.includes('auxiliar')) {
+    const wasapi = await findAudioInputByType(inputList, 'wasapi_input_capture');
+    if (wasapi) return wasapi;
+    
+    const micMatch = inputList.find((i: any) => 
+      i.inputName && (
+        i.inputName.toLowerCase().includes('mic') ||
+        i.inputName.toLowerCase().includes('microphone')
+      )
+    );
+    if (micMatch) return String(micMatch.inputName);
+  }
+  
+  return null;
+}
+
 function setupOBSEventListeners() {
   if (!obs) return;
 
@@ -273,7 +316,15 @@ async function handleObsCommand(msg: any) {
         break;
       case 'Mute':
         if (msg.args?.target) {
-          await obs.call('ToggleInputMute', { inputName: String(msg.args.target) }) as any;
+          const inputListResult = await obs.call('GetInputList') as any;
+          const inputName = await findInputByName(inputListResult.inputs || [], String(msg.args.target));
+          if (inputName) {
+            console.log(`Smart mute: "${msg.args.target}" -> "${inputName}"`);
+            await obs.call('ToggleInputMute', { inputName }) as any;
+          } else {
+            console.log(`Input not found for mute: ${msg.args.target}`);
+            await obs.call('ToggleInputMute', { inputName: String(msg.args.target) }) as any;
+          }
         }
         break;
       case 'Visibility':
@@ -281,15 +332,28 @@ async function handleObsCommand(msg: any) {
           const progResult = await obs.call('GetCurrentProgramScene') as any;
           const currentProgramSceneName = String(progResult.currentProgramSceneName || '');
           const { sceneItems } = await obs.call('GetSceneItemList', { sceneName: currentProgramSceneName }) as any;
-          const item = sceneItems.find((i: any) => i.sourceName === msg.args.target);
+          
+          let item = sceneItems.find((i: any) => i.sourceName === msg.args.target);
+          if (!item && msg.args.target) {
+            const targetLower = String(msg.args.target).toLowerCase();
+            item = sceneItems.find((i: any) => 
+              i.sourceName && i.sourceName.toLowerCase().includes(targetLower)
+            );
+          }
+          
           if (item) {
+            console.log(`Smart visibility: "${msg.args.target}" -> "${item.sourceName}"`);
             await obs.call('SetSceneItemEnabled', {
               sceneName: currentProgramSceneName,
               sceneItemId: Number(item.sceneItemId || 0),
               sceneItemEnabled: Boolean(msg.args.enabled)
             }) as any;
+          } else {
+            console.log(`Scene item not found: ${msg.args.target}`);
           }
         }
+        break;
+      case 'Filter':
         break;
       case 'Filter':
         if (msg.args?.target && msg.args?.filter && msg.args?.enabled !== undefined) {
