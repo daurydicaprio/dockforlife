@@ -2,78 +2,114 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react"
 
-interface OBSInput {
-  inputName: string
-  muted?: boolean
-}
-
-interface OBSScene {
-  sceneName: string
-}
-
-interface OBSData {
-  scenes: OBSScene[]
-  inputs: OBSInput[]
+// Centralized OBS State Store - Single Source of Truth
+export interface OBSState {
+  scenes: { sceneName: string }[]
+  inputs: { inputName: string }[]
   allSources: string[]
   rec: boolean
   str: boolean
+  currentScene: string
+  muteStates: Record<string, boolean>
+  visibilityStates: Record<string, boolean>
+  filterStates: Record<string, boolean>
+  lastUpdate: number
 }
 
 interface OBSContextType {
-  obsData: OBSData
-  updateOBSData: (data: { scenes?: string[]; inputs?: string[] }) => void
-  setRecording: (rec: boolean) => void
-  setStreaming: (str: boolean) => void
-  clearOBSData: () => void
+  obsState: OBSState
+  setOBSState: React.Dispatch<React.SetStateAction<OBSState>>
+  updateMuteState: (inputName: string, muted: boolean) => void
+  updateRecording: (rec: boolean) => void
+  updateStreaming: (str: boolean) => void
+  updateCurrentScene: (sceneName: string) => void
+  updateVisibilityState: (sceneName: string, sceneItemId: number, enabled: boolean) => void
+  updateFilterState: (sourceName: string, filterName: string, enabled: boolean) => void
+  resetOBSState: () => void
 }
 
-const defaultOBSData: OBSData = {
+const defaultOBSState: OBSState = {
   scenes: [],
   inputs: [],
   allSources: [],
   rec: false,
   str: false,
+  currentScene: "",
+  muteStates: {},
+  visibilityStates: {},
+  filterStates: {},
+  lastUpdate: Date.now(),
 }
 
 const OBSContext = createContext<OBSContextType | undefined>(undefined)
 
 export function OBSProvider({ children }: { children: ReactNode }) {
-  const [obsData, setObsData] = useState<OBSData>(defaultOBSData)
+  const [obsState, setOBSState] = useState<OBSState>(defaultOBSState)
 
-  const updateOBSData = useCallback((data: { scenes?: string[]; inputs?: string[] }) => {
-    setObsData((prev) => {
-      const scenes = data.scenes || prev.scenes.map(s => s.sceneName)
-      const inputs = data.inputs || prev.inputs.map(i => i.inputName)
-      
-      return {
-        ...prev,
-        scenes: scenes.map(name => ({ sceneName: name })),
-        inputs: inputs.map(name => ({ inputName: name })),
-        allSources: [...scenes, ...inputs].sort(),
-      }
-    })
+  const updateMuteState = useCallback((inputName: string, muted: boolean) => {
+    setOBSState((prev) => ({
+      ...prev,
+      muteStates: { ...prev.muteStates, [inputName]: muted },
+      lastUpdate: Date.now(),
+    }))
   }, [])
 
-  const setRecording = useCallback((rec: boolean) => {
-    setObsData((prev) => ({ ...prev, rec }))
+  const updateRecording = useCallback((rec: boolean) => {
+    setOBSState((prev) => ({
+      ...prev,
+      rec,
+      lastUpdate: Date.now(),
+    }))
   }, [])
 
-  const setStreaming = useCallback((str: boolean) => {
-    setObsData((prev) => ({ ...prev, str }))
+  const updateStreaming = useCallback((str: boolean) => {
+    setOBSState((prev) => ({
+      ...prev,
+      str,
+      lastUpdate: Date.now(),
+    }))
   }, [])
 
-  const clearOBSData = useCallback(() => {
-    setObsData(defaultOBSData)
+  const updateCurrentScene = useCallback((sceneName: string) => {
+    setOBSState((prev) => ({
+      ...prev,
+      currentScene: sceneName,
+      lastUpdate: Date.now(),
+    }))
+  }, [])
+
+  const updateVisibilityState = useCallback((sceneName: string, sceneItemId: number, enabled: boolean) => {
+    setOBSState((prev) => ({
+      ...prev,
+      visibilityStates: { ...prev.visibilityStates, [`${sceneName}-${sceneItemId}`]: enabled },
+      lastUpdate: Date.now(),
+    }))
+  }, [])
+
+  const updateFilterState = useCallback((sourceName: string, filterName: string, enabled: boolean) => {
+    setOBSState((prev) => ({
+      ...prev,
+      filterStates: { ...prev.filterStates, [`${sourceName}-${filterName}`]: enabled },
+      lastUpdate: Date.now(),
+    }))
+  }, [])
+
+  const resetOBSState = useCallback(() => {
+    setOBSState(defaultOBSState)
   }, [])
 
   return (
     <OBSContext.Provider
       value={{
-        obsData,
-        updateOBSData,
-        setRecording,
-        setStreaming,
-        clearOBSData,
+        obsState,
+        setOBSState,
+        updateMuteState,
+        updateRecording,
+        updateStreaming,
+        updateCurrentScene,
+        updateVisibilityState,
+        updateFilterState,
+        resetOBSState,
       }}
     >
       {children}
@@ -88,3 +124,5 @@ export function useOBS() {
   }
   return context
 }
+
+export { OBSContext }
