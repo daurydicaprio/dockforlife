@@ -24,6 +24,9 @@ export interface LocaleStrings {
     wsUrl: string
     wsUrlPlaceholder: string
     wsUrlHint: string
+    workerUrl: string
+    workerUrlPlaceholder: string
+    workerUrlHint: string
     local: string
     connected: string
     localMode: string
@@ -184,6 +187,9 @@ export const locales: Record<Language, LocaleStrings> = {
       wsUrl: 'Local WebSocket URL',
       wsUrlPlaceholder: 'ws://127.0.0.1:4455',
       wsUrlHint: 'Default: ws://127.0.0.1:4455',
+      workerUrl: 'Relay Worker URL',
+      workerUrlPlaceholder: 'wss://your-worker.workers.dev/ws',
+      workerUrlHint: 'Cloudflare Worker URL for remote connections',
       local: 'Local',
       connected: 'Connected',
       localMode: 'Local Mode',
@@ -342,6 +348,9 @@ export const locales: Record<Language, LocaleStrings> = {
       wsUrl: 'URL WebSocket Local',
       wsUrlPlaceholder: 'ws://127.0.0.1:4455',
       wsUrlHint: 'Por defecto: ws://127.0.0.1:4455',
+      workerUrl: 'URL del Relay Worker',
+      workerUrlPlaceholder: 'wss://tu-worker.workers.dev/ws',
+      workerUrlHint: 'URL del Cloudflare Worker para conexiones remotas',
       local: 'Local',
       connected: 'Conectado',
       localMode: 'Modo Local',

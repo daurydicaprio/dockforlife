@@ -16,7 +16,7 @@ Control your OBS Studio from any device—mobile, tablet, or desktop—without c
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              WEB APPLICATION                                 │
 │                         (Next.js + React + Tailwind)                        │
-│                  https://dock.daurydicaprio.com or custom                   │
+│                  https://your-domain.com or custom                         │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │
                               WebSocket (WSS)
@@ -24,7 +24,7 @@ Control your OBS Studio from any device—mobile, tablet, or desktop—without c
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         CLOUDFLARE WORKER (RELAY)                           │
-│                      dockforlife-relay.prod.workers.dev                      │
+│                      wss://your-worker.your-subdomain.workers.dev            │
 │                         (or your custom worker)                              │
 │                                                                             │
 │    ┌─────────────────────────────────────────────────────────────────┐    │
@@ -129,10 +129,10 @@ This means:
 
 ### Default Worker
 
-The project is configured to use the default deployment:
+The project uses placeholder Worker URLs by default:
 
 ```
-remote.daurydicaprio.com → Cloudflare Worker → dockforlife-relay.prod.workers.dev
+wss://your-worker.your-subdomain.workers.dev/ws
 ```
 
 ### Custom Worker Deployment
