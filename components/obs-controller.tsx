@@ -496,6 +496,12 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
         setIsConnecting(false)
         setRemoteWaitingForAgent(true)
         ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
+        
+        // Force initial sync after 500ms delay to ensure mobile socket is fully ready
+        setTimeout(() => {
+          console.log("[Mobile] Triggering initial OBS state sync...")
+          fetchInitialOBSState()
+        }, 500)
       }
 
       ws.onmessage = (event) => {
@@ -1178,19 +1184,18 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                     )}
                   >
                      <button
-                       className={cn(
-                         "w-full min-h-[160px] sm:min-h-[180px] rounded-2xl flex flex-col items-center justify-center gap-4 transition-all duration-150 active:scale-[0.97] relative overflow-hidden touch-manipulation",
-                         "border-2",
-                         isActive
-                           ? "border-black brightness-125 shadow-lg scale-[1.02]"
-                           : isDark
-                             ? "border-white/20 bg-zinc-800"
-                             : "border-gray-300 bg-gray-100"
-                       )}
-                       style={{
-                         backgroundColor: isActive ? bgColor : undefined,
-                         color: isActive ? textColor : undefined
-                       }}
+                        className={cn(
+                          "w-full min-h-[160px] sm:min-h-[180px] rounded-2xl flex flex-col items-center justify-center gap-4 transition-all duration-150 active:scale-[0.97] relative overflow-hidden touch-manipulation",
+                          isActive
+                            ? "shadow-lg scale-[1.02]"
+                            : ""
+                        )}
+                        style={{
+                          backgroundColor: bgColor,
+                          color: textColor,
+                          filter: isActive ? "brightness(1.3)" : "brightness(1.0)",
+                          border: isActive ? "4px solid black" : "2px solid transparent"
+                        }}
                       onClick={() => handleButtonClick(btn, i)}
                       onContextMenu={(e) => { e.preventDefault(); openModal(i) }}
                       onTouchStart={(e) => handleTouchStart(i, e)} 
