@@ -62,7 +62,7 @@ Download the pre-built binary for your platform:
 1. Download from [GitHub Releases](https://github.com/daurydicaprio/dockforlife/releases)
 2. Run the agent on the computer with OBS
 3. The agent will display a pairing code
-4. Open [dockforlife.vercel.app](https://dockforlife.vercel.app) on your mobile device
+4. Open [dock.daurydicaprio.com](https://dock.daurydicaprio.com) on your mobile device
 5. Enter the pairing code in Settings → Remote Mode
 6. Start controlling OBS!
 

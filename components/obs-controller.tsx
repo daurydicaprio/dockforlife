@@ -414,6 +414,46 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     }, 1000)
   }, [disconnectWorker, showToast])
 
+  // Fetch initial OBS state for mobile data handshake
+  const fetchInitialOBSState = useCallback(() => {
+    if (!workerRef.current || workerRef.current.readyState !== WebSocket.OPEN) {
+      console.error("Cannot fetch initial state: WebSocket not open")
+      return
+    }
+
+    console.log("Requesting initial OBS state from agent...")
+    
+    // Request scenes list
+    workerRef.current.send(JSON.stringify({
+      type: "obs_command",
+      command: "GetSceneList"
+    }))
+
+    // Request input list for mute states
+    workerRef.current.send(JSON.stringify({
+      type: "obs_command",
+      command: "GetInputList"
+    }))
+
+    // Request record status
+    workerRef.current.send(JSON.stringify({
+      type: "obs_command",
+      command: "GetRecordStatus"
+    }))
+
+    // Request stream status
+    workerRef.current.send(JSON.stringify({
+      type: "obs_command",
+      command: "GetStreamStatus"
+    }))
+
+    // Request current program scene
+    workerRef.current.send(JSON.stringify({
+      type: "obs_command",
+      command: "GetCurrentProgramScene"
+    }))
+  }, [])
+
   const connectToWorker = useCallback(async () => {
     const workerUrl = getWorkerUrl()
     const code = joinCode.trim().toUpperCase()
@@ -459,6 +499,10 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
           } else if (data.type === "peer_connected") {
             setRemoteWaitingForAgent(false)
             showToast(strings.toasts.connected, "success")
+            // Trigger initial state fetch after peer connection is established
+            setTimeout(() => {
+              fetchInitialOBSState()
+            }, 500)
           } else if (data.type === "obs-data" || data.type === "obs_data") {
             console.log("OBS DATA RECEIVED:", JSON.stringify(data, null, 2))
             
@@ -1188,7 +1232,9 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             <p className={cn("text-xs", isDark ? "text-zinc-500" : "text-gray-500")}>
               Made with <span className="text-pink-500">♥</span> by <span className={cn("font-medium", isDark ? "text-zinc-300" : "text-gray-700")}>Daury DiCaprio</span>
             </p>
-            <p className={cn("text-[10px] mt-0.5", isDark ? "text-zinc-600" : "text-gray-400")}>#verygoodforlife</p>
+            <p className={cn("text-[10px] mt-0.5", isDark ? "text-zinc-600" : "text-gray-400")}>
+              <a href="https://dock.daurydicaprio.com" target="_blank" rel="noopener noreferrer" className="hover:underline">dock.daurydicaprio.com</a>
+            </p>
           </div>
         </div>
       </footer>
