@@ -74,7 +74,7 @@ git clone https://github.com/daurydicaprio/dockforlife.git
 cd dockforlife
 
 # Install dependencies
-pnpm install
+npm install
 
 # Copy example configuration
 cp config.example.json config.json
@@ -87,7 +87,7 @@ cp config.example.json config.json
 # }
 
 # Start the development server
-pnpm dev
+npm run dev
 
 # In a separate terminal, start the agent
 cd agent
