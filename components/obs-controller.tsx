@@ -516,6 +516,36 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
             showToast(strings.toasts.connected, "success")
             // Request full state sync after peer connection is established
             ws.send(JSON.stringify({ type: "request_full_sync" }))
+          } else if (data.type === "full_sync") {
+            console.log("FULL SYNC RECEIVED:", JSON.stringify(data, null, 2))
+            setObsDataError(null)
+            const scenes = Array.isArray(data.scenes) ? data.scenes : []
+            const inputs = Array.isArray(data.inputs) ? data.inputs : []
+            const currentScene = data.currentScene || ""
+            const muteStates = data.muteStates && typeof data.muteStates === "object" ? data.muteStates : {}
+            const visibilityStates = data.visibilityStates && typeof data.visibilityStates === "object" ? data.visibilityStates : {}
+            const filterStates = data.filterStates && typeof data.filterStates === "object" ? data.filterStates : {}
+            const rec = data.rec || false
+            const str = data.str || false
+            
+            setObsState((prev: OBSState) => ({ 
+              ...prev, 
+              scenes, 
+              inputs,
+              allSources: [...scenes.map((s: { sceneName: string }) => s.sceneName), ...inputs.map((i: { inputName: string }) => i.inputName)],
+              currentScene,
+              muteStates,
+              visibilityStates,
+              filterStates,
+              rec,
+              str,
+              lastUpdate: Date.now()
+            }))
+            
+            setHasOBSData(true)
+            setRemoteWaitingForAgent(false)
+            setSettingsOpen(false)
+            setModalOpen(false)
           } else if (data.type === "obs-data" || data.type === "obs_data") {
             console.log("OBS DATA RECEIVED:", JSON.stringify(data, null, 2))
             
@@ -571,53 +601,52 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
               lastUpdate: Date.now()
             }))
           } else if (data.type === "obs_event") {
-            // Handle real-time OBS events from agent
+            console.log("OBS EVENT RECEIVED:", data.eventType, data.eventData)
             const eventType = data.eventType
             const eventData = data.eventData
             
-            if (eventType === "InputMuteStateChanged" && eventData) {
-              setObsState((prev: OBSState) => ({
-                ...prev,
-                muteStates: { ...prev.muteStates, [eventData.inputName]: eventData.inputMuted },
-                lastUpdate: Date.now()
-              }))
-            } else if (eventType === "RecordStateChanged" && eventData) {
-              setObsState((prev: OBSState) => ({
-                ...prev,
-                rec: eventData.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED",
-                lastUpdate: Date.now()
-              }))
-            } else if (eventType === "StreamStateChanged" && eventData) {
-              setObsState((prev: OBSState) => ({
-                ...prev,
-                str: eventData.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED",
-                lastUpdate: Date.now()
-              }))
-            } else if (eventType === "CurrentProgramSceneChanged" && eventData) {
-              setObsState((prev: OBSState) => ({
-                ...prev,
-                currentScene: eventData.sceneName,
-                lastUpdate: Date.now()
-              }))
-            } else if (eventType === "SceneItemEnableStateChanged" && eventData) {
-              setObsState((prev: OBSState) => ({
-                ...prev,
-                visibilityStates: { 
-                  ...prev.visibilityStates, 
-                  [`${eventData.sceneName}-${eventData.sceneItemId}`]: eventData.sceneItemEnabled 
-                },
-                lastUpdate: Date.now()
-              }))
-            } else if (eventType === "SourceFilterEnableStateChanged" && eventData) {
-              setObsState((prev: OBSState) => ({
-                ...prev,
-                filterStates: { 
-                  ...prev.filterStates, 
-                  [`${eventData.sourceName}-${eventData.filterName}`]: eventData.filterEnabled 
-                },
-                lastUpdate: Date.now()
-              }))
-            }
+            setObsState((prev: OBSState) => {
+              const newState = { ...prev, lastUpdate: Date.now() }
+              
+              switch (eventType) {
+                case "InputMuteStateChanged":
+                  if (eventData?.inputName) {
+                    newState.muteStates = { ...prev.muteStates, [eventData.inputName]: eventData.inputMuted }
+                    console.log("Updated mute state:", eventData.inputName, eventData.inputMuted)
+                  }
+                  break
+                case "RecordStateChanged":
+                  newState.rec = eventData?.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED"
+                  console.log("Updated record state:", newState.rec)
+                  break
+                case "StreamStateChanged":
+                  newState.str = eventData?.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED"
+                  console.log("Updated stream state:", newState.str)
+                  break
+                case "CurrentProgramSceneChanged":
+                  newState.currentScene = eventData?.sceneName || ""
+                  console.log("Updated current scene:", newState.currentScene)
+                  break
+                case "SceneItemEnableStateChanged":
+                  if (eventData?.sceneName && eventData?.sceneItemId !== undefined) {
+                    const key = `${eventData.sceneName}-${eventData.sceneItemId}`
+                    newState.visibilityStates = { ...prev.visibilityStates, [key]: eventData.sceneItemEnabled }
+                    console.log("Updated visibility state:", key, eventData.sceneItemEnabled)
+                  }
+                  break
+                case "SourceFilterEnableStateChanged":
+                  if (eventData?.sourceName && eventData?.filterName) {
+                    const key = `${eventData.sourceName}-${eventData.filterName}`
+                    newState.filterStates = { ...prev.filterStates, [key]: eventData.filterEnabled }
+                    console.log("Updated filter state:", key, eventData.filterEnabled)
+                  }
+                  break
+                default:
+                  console.log("Unknown event type:", eventType)
+              }
+              
+              return newState
+            })
           } else if (data.type === "error") {
             showToast(data.message || strings.toasts.connectionError, "error")
             setIsConnecting(false)
