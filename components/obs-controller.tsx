@@ -497,11 +497,9 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
         setRemoteWaitingForAgent(true)
         ws.send(JSON.stringify({ type: "register", code: code, role: "client" }))
         
-        // Force initial sync after 500ms delay to ensure mobile socket is fully ready
-        setTimeout(() => {
-          console.log("[Mobile] Triggering initial OBS state sync...")
-          fetchInitialOBSState()
-        }, 500)
+        // Request full OBS state sync immediately after registering
+        console.log("[Mobile] Requesting full OBS state sync...")
+        ws.send(JSON.stringify({ type: "request_full_sync" }))
       }
 
       ws.onmessage = (event) => {
@@ -516,10 +514,8 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
           } else if (data.type === "peer_connected") {
             setRemoteWaitingForAgent(false)
             showToast(strings.toasts.connected, "success")
-            // Trigger initial state fetch after peer connection is established
-            setTimeout(() => {
-              fetchInitialOBSState()
-            }, 500)
+            // Request full state sync after peer connection is established
+            ws.send(JSON.stringify({ type: "request_full_sync" }))
           } else if (data.type === "obs-data" || data.type === "obs_data") {
             console.log("OBS DATA RECEIVED:", JSON.stringify(data, null, 2))
             
@@ -601,6 +597,24 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
               setObsState((prev: OBSState) => ({
                 ...prev,
                 currentScene: eventData.sceneName,
+                lastUpdate: Date.now()
+              }))
+            } else if (eventType === "SceneItemEnableStateChanged" && eventData) {
+              setObsState((prev: OBSState) => ({
+                ...prev,
+                visibilityStates: { 
+                  ...prev.visibilityStates, 
+                  [`${eventData.sceneName}-${eventData.sceneItemId}`]: eventData.sceneItemEnabled 
+                },
+                lastUpdate: Date.now()
+              }))
+            } else if (eventType === "SourceFilterEnableStateChanged" && eventData) {
+              setObsState((prev: OBSState) => ({
+                ...prev,
+                filterStates: { 
+                  ...prev.filterStates, 
+                  [`${eventData.sourceName}-${eventData.filterName}`]: eventData.filterEnabled 
+                },
                 lastUpdate: Date.now()
               }))
             }
@@ -1132,7 +1146,10 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                 const isStreaming = btn.type === "Stream" && obsState.str
                 const isMuted = Boolean(btn.type === "Mute" && btn.target && obsState.muteStates[btn.target])
                 const isActiveScene = btn.type === "Scene" && btn.target && obsState.currentScene === btn.target
-                const isVisible = Boolean(btn.type === "Visibility" && btn.target && obsState.visibilityStates[btn.target])
+                const isVisible = Boolean(btn.type === "Visibility" && btn.target && 
+                  Object.entries(obsState.visibilityStates).some(([key, val]) => 
+                    key.includes(btn.target!) && val
+                  ))
                 const isFilterEnabled = Boolean(btn.type === "Filter" && btn.target && btn.filter && obsState.filterStates[`${btn.target}-${btn.filter}`])
 
                 // Button is active if it's in its active state
@@ -1140,8 +1157,8 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                 const isDragging = draggedIdx === i
                 const isDragOver = dragOverIdx === i
 
-                // Determine background color - ALWAYS use btn.color as base
-                const bgColor = btn.color || "#18181b"
+                // Determine background color - ALWAYS use btn.color as base, switch to colorActive when active
+                const bgColor = (isActive && btn.colorActive) ? btn.colorActive : (btn.color || "#18181b")
 
                 // Determine text color based on background brightness
                 const getTextColor = (hexColor: string) => {
