@@ -214,6 +214,9 @@ function getInitialPairingCode(): string {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [muteStates, setMuteStates] = useState<Record<string, boolean>>({})
+  const [currentScene, setCurrentScene] = useState<string>("")
+  const [visibilityStates, setVisibilityStates] = useState<Record<string, boolean>>({})
+  const [filterStates, setFilterStates] = useState<Record<string, boolean>>({})
   const [isDark, setIsDark] = useState(true)
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
@@ -497,6 +500,23 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
               }
               setMuteStates(newMuteStates)
             }
+            if (data.currentScene && typeof data.currentScene === "string") {
+              setCurrentScene(data.currentScene)
+            }
+            if (data.visibilityStates && typeof data.visibilityStates === "object") {
+              const newVisibilityStates: Record<string, boolean> = {}
+              for (const [key, value] of Object.entries(data.visibilityStates)) {
+                if (typeof value === "boolean") newVisibilityStates[key] = value
+              }
+              setVisibilityStates(newVisibilityStates)
+            }
+            if (data.filterStates && typeof data.filterStates === "object") {
+              const newFilterStates: Record<string, boolean> = {}
+              for (const [key, value] of Object.entries(data.filterStates)) {
+                if (typeof value === "boolean") newFilterStates[key] = value
+              }
+              setFilterStates(newFilterStates)
+            }
           } else if (data.type === "error") {
             showToast(data.message || strings.toasts.connectionError, "error")
             setIsConnecting(false)
@@ -563,6 +583,10 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
         } catch {}
       }
 
+      // Get current scene
+      const { currentProgramSceneName } = await obs.call("GetCurrentProgramScene")
+      setCurrentScene(currentProgramSceneName as string)
+
       setObsData({
         scenes: sceneList.scenes as { sceneName: string }[],
         inputs: inputList.inputs as { inputName: string }[],
@@ -575,8 +599,9 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
       setAdapter(obsAdapter)
 
       ;(obs as any).on("CurrentProgramSceneChanged", (data: unknown) => {
-        console.log("Scene changed:", (data as { sceneName: string }).sceneName)
-        setObsData((prev) => ({ ...prev }))
+        const d = data as { sceneName: string }
+        console.log("Scene changed:", d.sceneName)
+        setCurrentScene(d.sceneName)
       })
 
       ;(obs as any).on("SourceMuteStateChanged", (data: unknown) => {
@@ -597,10 +622,17 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
         setObsData((prev) => ({ ...prev, str: d.outputState === "OBS_WEBSOCKET_OUTPUT_STATE_STARTED" }))
       })
 
-      ;(obs as any).on("SceneItemVisibilityChanged", (data: unknown) => {
-        const d = data as { sceneItemId: number; sceneItemVisible: boolean }
-        console.log("Visibility changed:", d.sceneItemId, d.sceneItemVisible)
-        setObsData((prev) => ({ ...prev }))
+      ;(obs as any).on("SceneItemEnableStateChanged", (data: unknown) => {
+        const d = data as { sceneName: string; sceneItemId: number; sceneItemEnabled: boolean }
+        console.log("Visibility changed:", d.sceneName, d.sceneItemId, d.sceneItemEnabled)
+        // We need to fetch the source name from the scene item
+        setVisibilityStates((prev) => ({ ...prev, [`${d.sceneName}-${d.sceneItemId}`]: d.sceneItemEnabled }))
+      })
+
+      ;(obs as any).on("SourceFilterEnableStateChanged", (data: unknown) => {
+        const d = data as { sourceName: string; filterName: string; filterEnabled: boolean }
+        console.log("Filter state changed:", d.sourceName, d.filterName, d.filterEnabled)
+        setFilterStates((prev) => ({ ...prev, [`${d.sourceName}-${d.filterName}`]: d.filterEnabled }))
       })
 
       localStorage.setItem("dfl_ws_url", wsUrl)
@@ -639,20 +671,51 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
           const obs = obsRef.current
           if (!obs) return
 
+          // Sync recording and streaming status
           const [recStatus, streamStatus] = await Promise.all([obs.call("GetRecordStatus"), obs.call("GetStreamStatus")])
-
           setObsData((prev) => ({ ...prev, rec: recStatus.outputActive, str: streamStatus.outputActive }))
 
+          // Sync current scene
+          const { currentProgramSceneName } = await obs.call("GetCurrentProgramScene")
+          setCurrentScene(currentProgramSceneName as string)
+
+          // Sync all button states
           const newMuteStates: Record<string, boolean> = {}
+          const newVisibilityStates: Record<string, boolean> = {}
+          const newFilterStates: Record<string, boolean> = {}
+
           for (const btn of deck) {
             if (btn.type === "Mute" && btn.target) {
               try {
                 const { inputMuted } = await obs.call("GetInputMute", { inputName: btn.target })
                 newMuteStates[btn.target] = inputMuted
               } catch {}
+            } else if (btn.type === "Visibility" && btn.target) {
+              try {
+                const { sceneItems } = await obs.call("GetSceneItemList", { sceneName: currentProgramSceneName as string })
+                const item = sceneItems.find((i: any) => i.sourceName === btn.target)
+                if (item) {
+                  const { sceneItemEnabled } = await obs.call("GetSceneItemEnabled", {
+                    sceneName: currentProgramSceneName as string,
+                    sceneItemId: item.sceneItemId as number
+                  })
+                  newVisibilityStates[btn.target] = sceneItemEnabled
+                }
+              } catch {}
+            } else if (btn.type === "Filter" && btn.target && btn.filter) {
+              try {
+                const { filterEnabled } = await obs.call("GetSourceFilter", {
+                  sourceName: btn.target,
+                  filterName: btn.filter
+                })
+                newFilterStates[`${btn.target}-${btn.filter}`] = filterEnabled
+              } catch {}
             }
           }
+
           setMuteStates(newMuteStates)
+          setVisibilityStates(newVisibilityStates)
+          setFilterStates(newFilterStates)
         } catch {}
       }
       interval = setInterval(syncStates, 1500)
@@ -843,12 +906,19 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     showToast(strings.toasts.orderUpdated, "success")
   }
   
+  const triggerHaptic = () => {
+    if (typeof window !== "undefined" && window.navigator.vibrate) {
+      window.navigator.vibrate(50)
+    }
+  }
+
   const handleButtonClick = (btn: DeckButton, index: number) => {
     // Prevent click if we were dragging
     if (isDraggingRef.current) {
       isDraggingRef.current = false
       return
     }
+    triggerHaptic()
     execute(btn)
   }
 
@@ -913,12 +983,15 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                 const isRecording = btn.type === "Record" && (obsData?.rec || false)
                 const isStreaming = btn.type === "Stream" && (obsData?.str || false)
                 const isMuted = Boolean(btn.type === "Mute" && btn.target && (muteStates || {})[btn.target])
-                
-                // Button is active if it's in its active state (recording, streaming, or muted for mute buttons)
-                const isActive = isRecording || isStreaming || (btn.type === "Mute" && isMuted)
+                const isActiveScene = btn.type === "Scene" && btn.target && currentScene === btn.target
+                const isVisible = Boolean(btn.type === "Visibility" && btn.target && (visibilityStates || {})[btn.target])
+                const isFilterEnabled = Boolean(btn.type === "Filter" && btn.target && btn.filter && (filterStates || {})[`${btn.target}-${btn.filter}`])
+
+                // Button is active if it's in its active state
+                const isActive = isRecording || isStreaming || isActiveScene || isVisible || isFilterEnabled || (btn.type === "Mute" && isMuted)
                 const isDragging = draggedIdx === i
                 const isDragOver = dragOverIdx === i
-                
+
                 // Determine background color
                 let bgColor = btn.color
                 if (isRecording) {
@@ -927,6 +1000,8 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
                   bgColor = "#16a34a" // Green for streaming
                 } else if (isMuted) {
                   bgColor = btn.colorActive || "#3b82f6" // Use active color when muted
+                } else if (isActiveScene || isVisible || isFilterEnabled) {
+                  bgColor = btn.colorActive || "#3b82f6" // Use active color for active scene/visible source/enabled filter
                 }
 
                 // Determine text color based on background brightness
@@ -994,16 +1069,18 @@ const remoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
               {/* Add Button */}
               <button
                 className={cn(
-                  "min-h-[160px] sm:min-h-[180px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-4 transition-colors",
-                  isDark 
-                    ? "border-white/20 text-zinc-500 hover:border-white/40 hover:text-zinc-300 bg-zinc-900/40" 
+                  "min-h-[160px] sm:min-h-[180px] rounded-2xl border-2 border-dashed flex items-center justify-center transition-colors",
+                  isDark
+                    ? "border-white/20 text-zinc-500 hover:border-white/40 hover:text-zinc-300 bg-zinc-900/40"
                     : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 bg-gray-100/50"
                 )}
-                onClick={() => openModal(deck.length)}
+                onClick={() => {
+                  triggerHaptic()
+                  openModal(deck.length)
+                }}
                 aria-label="Add new button"
               >
                 <Plus className="h-10 w-10" />
-                <span className="text-sm font-bold uppercase tracking-wider text-center px-3 leading-tight opacity-0">ADD</span>
               </button>
             </div>
           </div>
