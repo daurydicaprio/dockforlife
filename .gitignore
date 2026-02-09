@@ -1,65 +1,27 @@
-# Dependencies
-**/node_modules/
-**/vendor/
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .pnpm-debug.log*
 
-# Next.js & Production
-.next/
-out/
-build/
-dist/
-**/dist/
-
-# Binarios y ejecutables
-bin/
-*.exe
-*.bin
-/proxy/bin/
-/proxy/dockforlife-proxy*
-.DS_Store
-*.test
-*.out
-
-# Go
-*.o
-*.a
-*.so
-
-# Logs
-*.log
-npm-debug.log*
-
-# Cloudflare & Environment
+# env files
 .env*
-.env.local
-.env.production
-.dev.variables
+
+# vercel
 .vercel
-wrangler.toml
-.wrangler/
-!wrangler.toml
-!worker/wrangler.toml
 
-# Agent Configuration
-proxy/config.json
-proxy/config.local.json
-dockforlife-agent
-dockforlife.config.json
-config.json
-
-# Agent skills directories
-.agent/
-.agents/
-
-# Lockfiles (project uses pnpm)
-package-lock.json
-agent/package-lock.json
-
-# Planning
-PLAN.md
-plan.md
-
-# TypeScript
+# typescript
 *.tsbuildinfo
 next-env.d.ts
-agent/dist

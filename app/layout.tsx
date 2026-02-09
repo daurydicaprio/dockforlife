@@ -2,7 +2,6 @@ import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
-import { OBSProvider } from "@/lib/obs-context"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -43,24 +42,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              (function() {
-                var lang = 'en';
-                try {
-                  var saved = localStorage.getItem('dfl_lang');
-                  if (saved === 'es' || saved === 'en') {
-                    lang = saved;
-                  } else {
-                    var browser = navigator.language?.toLowerCase() || '';
-                    if (browser.startsWith('es')) lang = 'es';
-                  }
-                } catch (e) {}
-                document.documentElement.lang = lang;
-              })();
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
                   navigator.serviceWorker.register('/sw.js');
@@ -80,9 +66,7 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
-        <OBSProvider>
-          {children}
-        </OBSProvider>
+        {children}
         <Analytics />
       </body>
     </html>
